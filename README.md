@@ -369,3 +369,13 @@ ComfyUI-LocalGallery/
 
 **Q：能不能不开 ComfyUI 单独用这个图库？**
 不能，前端依赖 ComfyUI 的接口和节点容器。但可以手动调上表中的 HTTP 接口。
+
+---
+
+## 许可证
+
+[MIT](LICENSE) © 2026 wanet36
+
+## 致谢
+
+节点结构参考了 `ComfyUI-Danbooru-Gallery` 的 `DanbooruGalleryNode`。本项目把数据源从远端 Danbooru 换成本地文件夹，提示词来源改成同目录同名文件，并重写了前端、格式转换与反推流程。

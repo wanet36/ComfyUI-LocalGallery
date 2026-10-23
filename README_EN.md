@@ -388,3 +388,13 @@ That tab only lists images that **have** a matching prompt file. Check the `.txt
 
 **Can I use the gallery without ComfyUI?**
 No — the front end relies on ComfyUI's node container and endpoints. You can still call the HTTP API above directly.
+
+---
+
+## License
+
+[MIT](LICENSE) © 2026 wanet36
+
+## Acknowledgements
+
+The node structure was inspired by `DanbooruGalleryNode` from `ComfyUI-Danbooru-Gallery`. This project replaces the remote Danbooru data source with local folders, resolves prompts from same-named files sitting next to each image, and rewrites the front end plus the convert and caption flows.
