@@ -1,0 +1,26 @@
+# ---- 运行时生成：含本机路径 / 个人数据，不要进仓库 ----
+config.json
+.last_paths.json
+.ui_settings.json
+favorites.json
+.trash/
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+
+# ---- 编辑器 / 系统 ----
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---- 临时 / 日志 ----
+*.log
+*.tmp
+oi_tmp.json

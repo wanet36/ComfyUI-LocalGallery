@@ -1,0 +1,15 @@
+{
+  "allowed_roots": [],
+  "thumb_size": 320,
+  "thumb_quality": 82,
+  "max_scan_files": 20000,
+  "max_image_side": 8192,
+  "trash_dir": "",
+  "allow_delete": true,
+  "recent_limit": 12,
+  "auto_select_when_empty": {
+    "enabled": false,
+    "limit": 4,
+    "recursive": false
+  }
+}
