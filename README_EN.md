@@ -20,14 +20,22 @@ Browse your local image folders right inside ComfyUI: waterfall thumbnails, hove
 
 ## Installation
 
-**Option 1 — git clone (recommended; `git pull` to update later)**
+**Option 1 — ComfyUI Manager (recommended)**
+
+1. Open the ComfyUI menu → **Manager** → **Custom Nodes Manager**
+2. Search for `local-gallery` or `Local Gallery`
+3. Click **Install**, then restart ComfyUI
+
+> Published to the [Comfy Registry](https://registry.comfy.org/nodes/local-gallery). Each new version goes through an official security review, so it may take a few minutes to show up — if it doesn't appear yet, use one of the methods below.
+
+**Option 2 — git clone (`git pull` to update later)**
 
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 ```
 
-**Option 2 — download the ZIP**
+**Option 3 — download the ZIP**
 
 1. Open the [repository page](https://github.com/wanet36/ComfyUI-LocalGallery) → green **Code** button → **Download ZIP**
 2. Unzip it and drop the whole `ComfyUI-LocalGallery` folder into `ComfyUI/custom_nodes/` (rename the unzipped `-main` suffixed folder back if needed)

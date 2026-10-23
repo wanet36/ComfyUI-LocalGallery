@@ -20,14 +20,22 @@
 
 ## 安装
 
-**方式一：git clone（推荐，之后 `git pull` 即可更新）**
+**方式一：ComfyUI Manager（推荐）**
+
+1. 打开 ComfyUI 菜单 → **Manager** → **Custom Nodes Manager**
+2. 搜索 `local-gallery` 或 `Local Gallery`
+3. 点 **Install** → 重启 ComfyUI
+
+> 已发布到 [Comfy Registry](https://registry.comfy.org/nodes/local-gallery)。新版本提交后要过一轮官方安全审核，刚发布的几分钟内可能还搜不到，稍等再试，或先用下面的方式安装。
+
+**方式二：git clone（之后 `git pull` 即可更新）**
 
 ```bash
 cd ComfyUI/custom_nodes
 git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 ```
 
-**方式二：下载压缩包**
+**方式三：下载压缩包**
 
 1. 打开 [仓库首页](https://github.com/wanet36/ComfyUI-LocalGallery) → 绿色 **Code** 按钮 → **Download ZIP**
 2. 解压，把整个 `ComfyUI-LocalGallery` 文件夹放进 `ComfyUI/custom_nodes/`（确保压缩包里多余的 `-main` 后缀目录名已改回）
