@@ -1,0 +1,18 @@
+[project]
+name = "local-gallery"
+version = "1.0.0"
+description = "Browse local image folders inside ComfyUI: waterfall grid, hover to read the matching prompt file, click to select, then output images and prompts one by one. Fully offline, bilingual UI."
+license = { file = "LICENSE" }
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/wanet36/ComfyUI-LocalGallery"
+Documentation = "https://github.com/wanet36/ComfyUI-LocalGallery#readme"
+"Bug Tracker" = "https://github.com/wanet36/ComfyUI-LocalGallery/issues"
+
+[tool.comfy]
+PublisherId = "wanet"
+DisplayName = "Local Gallery"
+Icon = "https://raw.githubusercontent.com/wanet36/ComfyUI-LocalGallery/main/docs/icon.png"
