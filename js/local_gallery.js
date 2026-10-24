@@ -816,6 +816,10 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
 .lgb-fav.on {
   color: var(--lg-gold);
 }
+/* 没有同名提示词时按钮变淡，避免点了才知道 */
+.lgb-copy.off {
+  opacity: 0.4;
+}
 .lgb-del:hover {
   background: #e5484d !important;
   color: #fff;
@@ -847,6 +851,10 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
 .lgb-grid.compact .lgb-acts > * {
   width: 17px;
   height: 17px;
+}
+/* 窄列塞不下四个按钮，复制让位（底栏 / 提示词页 / 大图预览仍可复制） */
+.lgb-grid.compact .lgb-copy {
+  display: none;
 }
 .lgb-grid.compact .lgb-cap {
   padding: 12px 4px 3px;
@@ -1191,6 +1199,10 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
 .lgb-viewer .lgb-vbtn.danger:hover {
   background: rgba(239, 68, 68, 0.24);
   color: #ff9c9c;
+}
+/* 没有同名提示词时复制按钮变淡，但仍可点（点了会说明原因） */
+.lgb-viewer .lgb-vbtn.off {
+  opacity: 0.4;
 }
 .lgb-viewer .zoomlabel {
   min-width: 40px;
@@ -2676,6 +2688,11 @@ const I18N_EN = {
   "当前：单选。点一下只保留这一张，再点同一张取消选中。点击切到多选": "Single-select: a click keeps only that image, clicking it again deselects. Click to switch to multi-select.",
   "当前：多选。点一下加选、再点取消，Shift 连选。点击切到单选": "Multi-select: click to add, click again to remove, Shift for a range. Click to switch to single-select.",
   "复制提示词": "Copy prompts",
+  "复制这张的提示词": "Copy this image's prompt",
+  "这张没有同名提示词": "No prompt file for this image",
+  "这张没有同名提示词，无法复制": "No prompt file for this image — nothing to copy",
+  "这张的提示词是空的，没有可复制的内容": "This image's prompt is empty",
+  "已复制这张的提示词": "Prompt copied",
   "删提示词": "Delete prompts",
   "删除选中": "Delete selected",
 
@@ -3040,6 +3057,8 @@ const ICON_PATHS = {
   prev: '<path d="M9.9 3.4L5.1 8l4.8 4.6"/>',
   next: '<path d="M6.1 3.4L10.9 8l-4.8 4.6"/>',
   star: '<path d="M8 2.4l1.75 3.56 3.9.57-2.82 2.76.66 3.9L8 11.35l-3.49 1.84.66-3.9L2.35 6.53l3.9-.57z"/>',
+  copy:
+    '<rect x="5.6" y="5.6" width="7.8" height="7.8" rx="1.4"/><path d="M10.4 5.6V4.2A1.4 1.4 0 0 0 9 2.8H4.2A1.4 1.4 0 0 0 2.8 4.2V9a1.4 1.4 0 0 0 1.4 1.4h1.4"/>',
   convert:
     '<path d="M2.6 5.9h10.8"/><path d="M10.4 3l3 2.9-3 2.9"/><path d="M13.4 10.1H2.6"/><path d="M5.6 7.2l-3 2.9 3 2.9"/>',
   zoomIn:
@@ -4180,6 +4199,11 @@ app.registerExtension({
         btnNext.append(icon("next", 14));
         setTitle(btnNext, "下一张（→）");
 
+        // 复制提示词：紧挨收藏左边；没有同名 .txt 时变淡，点了给出原因
+        const btnCopy = el("button", "lgb-vbtn");
+        btnCopy.append(icon("copy", 14));
+        setTitle(btnCopy, "复制这张的提示词");
+
         const btnFav = el("button", "lgb-vbtn");
         btnFav.append(icon("star", 14));
         const btnDel = el("button", "lgb-vbtn danger");
@@ -4206,6 +4230,7 @@ app.registerExtension({
           counter,
           btnNext,
           sep(),
+          btnCopy,
           btnFav,
           btnDel,
           sep(),
@@ -4348,6 +4373,40 @@ app.registerExtension({
           show(index + 1);
         });
 
+        // 复制按钮：有同名 .txt 才亮，没有就变淡（点了会说明原因）
+        function paintViewerCopy(cur) {
+          const has = !!(cur && cur.has_prompt);
+          btnCopy.classList.toggle("off", !has);
+          setTitle(btnCopy, has ? "复制这张的提示词" : "这张没有同名提示词");
+        }
+
+        async function copyCurrentPrompt() {
+          const cur = list[index];
+          if (!cur || btnCopy.disabled) return;
+          btnCopy.disabled = true;
+          try {
+            const entry = await ensurePrompt(cur);
+            const text = (entry && entry.prompt) || "";
+            if (!text) {
+              setStatus(
+                cur.has_prompt
+                  ? "这张的提示词是空的，没有可复制的内容"
+                  : "这张没有同名提示词，无法复制",
+                { error: true }
+              );
+              return;
+            }
+            await copyText(text, "已复制这张的提示词");
+          } finally {
+            btnCopy.disabled = false;
+          }
+        }
+
+        btnCopy.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          copyCurrentPrompt();
+        });
+
         function paintViewerFav(on) {
           btnFav.classList.toggle("on", !!on);
           setTitle(btnFav, on ? "取消收藏（F）" : "收藏这张（F）");
@@ -4415,6 +4474,7 @@ app.registerExtension({
           btnPrev.disabled = index <= 0;
           btnNext.disabled = index >= list.length - 1;
           paintViewerFav(state.favorites.has(cur.path));
+          paintViewerCopy(cur);
           resetZoom();
         }
 
@@ -7247,9 +7307,14 @@ app.registerExtension({
         const fav = el("div", `lgb-fav${favOn ? " on" : ""}`, favOn ? "★" : "☆");
         setTitle(fav, favOn ? "取消收藏" : "收藏这张");
 
-        // 悬浮操作组：收藏 / 预览 / 删除
+        // 复制这张的提示词：没有同名 .txt 时按钮变淡，点了给出原因
+        const copy = el("div", `lgb-copy${item.has_prompt ? "" : " off"}`);
+        copy.append(icon("copy", 12));
+        setTitle(copy, item.has_prompt ? "复制这张的提示词" : "这张没有同名提示词");
+
+        // 悬浮操作组：复制 / 收藏 / 预览 / 删除
         const acts = el("div", "lgb-acts");
-        acts.append(fav, zoom, del);
+        acts.append(copy, fav, zoom, del);
 
         // 文件信息：文件名常驻，尺寸/体积在悬停时补一行
         const cap = el("div", "lgb-cap");
@@ -7280,9 +7345,30 @@ app.registerExtension({
           toggleFavorite(item, fav);
         });
 
+        copy.addEventListener("click", async (evt) => {
+          evt.stopPropagation();
+          hideTip();
+          if (!item.has_prompt) {
+            setStatus("这张没有同名提示词，无法复制", { error: true });
+            return;
+          }
+          const entry = await ensurePrompt(item);
+          const text = (entry && entry.prompt) || "";
+          if (!text) {
+            setStatus("这张的提示词是空的，没有可复制的内容", { error: true });
+            return;
+          }
+          await copyText(text, "已复制这张的提示词");
+        });
+
         dom.addEventListener("click", (evt) => {
           // 图标用内联 svg，命中判断要连子节点一起算
-          if ((zoom.contains?.(evt.target) || del.contains?.(evt.target) || fav.contains?.(evt.target))) {
+          if (
+            zoom.contains?.(evt.target) ||
+            del.contains?.(evt.target) ||
+            fav.contains?.(evt.target) ||
+            copy.contains?.(evt.target)
+          ) {
             return;
           }
           toggleSelect(item.path, index, {
