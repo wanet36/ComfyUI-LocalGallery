@@ -18,6 +18,16 @@ const COLS_MIN = 2;
 const COLS_MAX = 10;
 const COLS_KEY = "localGalleryBrowser.cols";
 const THEME_KEY = "localGalleryBrowser.theme"; // auto | light | dark
+const PICK_KEY = "localGalleryBrowser.pickMode"; // multi | single
+
+/* 选择模式只认这两个值，坏数据一律回落到多选 */
+function readPickMode() {
+  try {
+    return localStorage.getItem(PICK_KEY) === "single" ? "single" : "multi";
+  } catch (err) {
+    return "multi";
+  }
+}
 
 /* ------------------------------------------------------------------ 样式 */
 const CSS = `
@@ -368,6 +378,19 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   color: var(--lg-text);
   background: var(--lg-hover);
   border-color: var(--lg-line);
+}
+/* 单选模式：按钮常亮，提醒「点一下就替换」而不是加选。
+   必须放在 .lgb-btn.sm 之后，否则会被它的 background:transparent 盖掉 */
+:is(.lgb-wrap, .lgb-overlay) .lgb-btn.sm.lgb-pickmode.on {
+  background: var(--lg-accent-soft);
+  border-color: var(--lg-accent);
+  color: var(--lg-accent);
+  font-weight: 600;
+}
+:is(.lgb-wrap, .lgb-overlay) .lgb-btn.sm.lgb-pickmode.on:hover {
+  background: var(--lg-accent-soft);
+  color: var(--lg-accent-2);
+  border-color: var(--lg-accent-2);
 }
 :is(.lgb-wrap, .lgb-overlay) .lgb-btn.primary {
   background: var(--lg-accent);
@@ -2648,6 +2671,10 @@ const I18N_EN = {
   "全选": "Select all",
   "反选": "Invert",
   "清空选择": "Clear selection",
+  "单选": "Single",
+  "多选": "Multi",
+  "当前：单选。点一下只保留这一张，再点同一张取消选中。点击切到多选": "Single-select: a click keeps only that image, clicking it again deselects. Click to switch to multi-select.",
+  "当前：多选。点一下加选、再点取消，Shift 连选。点击切到单选": "Multi-select: click to add, click again to remove, Shift for a range. Click to switch to single-select.",
   "复制提示词": "Copy prompts",
   "删提示词": "Delete prompts",
   "删除选中": "Delete selected",
@@ -3234,6 +3261,8 @@ app.registerExtension({
         // 这样切到收藏页时提示词页不会跟着变成收藏的图
         galleryVisible: [],
         selected: new Map(),
+        // 单选 / 多选：单选时每次只保留一张（点同一张可取消）
+        pickMode: readPickMode(),
         promptCache: new Map(),
         rendered: 0,
         columns: [],
@@ -3637,6 +3666,7 @@ app.registerExtension({
 
       /* 底栏：选择信息 + 批量操作（批量删除已挪到路径栏、回收站左边） */
       const rowFoot = el("div", "lgb-row lgb-foot");
+      const btnMode = el("button", "lgb-btn sm lgb-pickmode", "多选");
       const selLabel = el("span", "lgb-selpill", "已选 0");
       const statusLabel = el("span", "lgb-status", "悬停缩略图可预览提示词");
       statusLabel.dataset.i18nStatus = "悬停缩略图可预览提示词";
@@ -3644,7 +3674,27 @@ app.registerExtension({
       const btnInvert = el("button", "lgb-btn sm", "反选");
       const btnNone = el("button", "lgb-btn sm", "清空选择");
       const btnCopy = el("button", "lgb-btn sm", "复制提示词");
-      rowFoot.append(selLabel, statusLabel, btnAll, btnInvert, btnNone, btnCopy);
+      rowFoot.append(btnMode, selLabel, statusLabel, btnAll, btnInvert, btnNone, btnCopy);
+
+      /* 单选 / 多选切换：模式存本地，切到单选时把多余的选中项裁掉 */
+      btnMode.addEventListener("click", () => {
+        state.pickMode = state.pickMode === "single" ? "multi" : "single";
+        try {
+          localStorage.setItem(PICK_KEY, state.pickMode);
+        } catch (err) {
+          /* 忽略：存不住也只是下次回到默认多选 */
+        }
+        if (state.pickMode === "single" && state.selected.size > 1) {
+          const keep = [...state.selected.entries()].sort((a, b) => a[1] - b[1])[0];
+          state.selected.clear();
+          if (keep) state.selected.set(keep[0], 0);
+          commitSelection();
+        }
+        syncPickMode();
+        paintSelection();
+      });
+
+      syncPickMode();
 
       wrap.append(
         head,
@@ -3777,7 +3827,36 @@ app.registerExtension({
         }
       }
 
+      /* 单选 / 多选按钮的外观，以及和「全选 / 反选」的互斥 */
+      function syncPickMode() {
+        const single = state.pickMode === "single";
+        setLabel(btnMode, single ? "单选" : "多选");
+        btnMode.classList.toggle("on", single);
+        setTitleT(
+          btnMode,
+          single
+            ? "当前：单选。点一下只保留这一张，再点同一张取消选中。点击切到多选"
+            : "当前：多选。点一下加选、再点取消，Shift 连选。点击切到单选"
+        );
+        // 全选 / 反选一次会选多张，单选下没有意义
+        btnAll.disabled = single;
+        btnInvert.disabled = single;
+      }
+
       function toggleSelect(path, index, { range = false, exclusive = false } = {}) {
+        // 单选模式：永远只留一张；再点已选中的那张则取消（连带忽略 Shift）
+        if (state.pickMode === "single") {
+          if (state.selected.size === 1 && state.selected.has(path)) {
+            state.selected.clear();
+          } else {
+            state.selected.clear();
+            state.selected.set(path, 0);
+          }
+          state.lastClicked = index;
+          commitSelection();
+          paintSelection();
+          return;
+        }
         if (range && state.lastClicked >= 0) {
           const list = visibleItems();
           const from = Math.min(state.lastClicked, index);
