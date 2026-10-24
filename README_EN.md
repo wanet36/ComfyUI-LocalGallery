@@ -60,7 +60,7 @@ Five bands, top to bottom:
 | **Path bar** (Gallery only) | Browse, Settings, ⟳ rescan, Delete prompts, Delete selected, Trash |
 | **Filter row** | Include subfolders, Only with prompt, search-scope button, search box, `hits / total` |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page) |
-| **Footer** | Selection count, status text, Select all / Invert / Clear selection / Copy prompts |
+| **Footer** | Single / multi-select toggle, selection count, status text, Select all / Invert / Clear selection / Copy prompts |
 
 ### Adding paths
 
@@ -80,6 +80,8 @@ Paths can be folders, single images, or a mix. The same file reached through sev
 <img src="docs/hover.jpg" width="500" alt="Hover to read the prompt">
 
 - Click a thumbnail to select/deselect, `Shift + click` to select a range
+- The **Multi / Single** button at the far left of the footer switches modes: Multi accumulates a batch (numbered in click order); Single keeps exactly one image, and clicking it again deselects — `Shift` is ignored in Single. The mode is remembered locally across reloads
+- In Multi mode, `Ctrl / ⌘ + click` still narrows the selection down to that one image
 - Hover to show the full prompt (title line: `filename · resolution · size`)
 - Hovering also reveals the action group: `☆` favorite / `⤢` preview / `🗑` delete
 - `TXT` badge: green = prompt file exists, grey `—` = none
