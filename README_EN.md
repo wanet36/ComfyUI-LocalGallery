@@ -83,7 +83,9 @@ Paths can be folders, single images, or a mix. The same file reached through sev
 - The **Multi / Single** button at the far left of the footer switches modes: Multi accumulates a batch (numbered in click order); Single keeps exactly one image, and clicking it again deselects — `Shift` is ignored in Single. The mode is remembered locally across reloads
 - In Multi mode, `Ctrl / ⌘ + click` still narrows the selection down to that one image
 - Hover to show the full prompt (title line: `filename · resolution · size`)
-- Hovering also reveals the action group: `☆` favorite / `⤢` preview / `🗑` delete
+- Hovering also reveals the action group: `⧉` copy this image's prompt / `☆` favorite / `⤢` preview / `🗑` delete
+  - Copy takes just that one image's prompt and confirms in the status bar; when there's no matching `.txt` the button dims and clicking explains why
+  - Above 8 per row (column width < 96px) the action group drops the copy button so it never crowds the thumbnail — use the footer's Copy prompts or the Prompts tab instead
 - `TXT` badge: green = prompt file exists, grey `—` = none
 - The search box filters by file name / relative path; separate keywords with spaces (all must match)
 
@@ -178,9 +180,10 @@ Batch format conversion, size compression and resizing — **no VRAM involved**,
 
 <img src="docs/viewer.jpg" width="580" alt="Image viewer">
 
-One floating toolbar at the bottom: `‹ 3 / 300 ›` paging ｜ `★` favorite ｜ `🗑` delete ｜ `− 100% +` zoom ｜ `⤢` fit to window.
+One floating toolbar at the bottom: `‹ 3 / 300 ›` paging ｜ `⧉` copy prompt ｜ `★` favorite ｜ `🗑` delete ｜ `− 100% +` zoom ｜ `⤢` fit to window.
 
 - **Paging**: `←` `→` keys or the arrows; disabled at the first/last image
+- **Copy**: `⧉` puts the current image's prompt on the clipboard and confirms in the status bar; when there's no matching `.txt` the button dims and clicking explains why
 - **Favorite**: shortcut `F`; the star on the grid thumbnail syncs immediately
 - **Delete**: opens a confirm dialog, then moves image + prompt file to Trash; advances to the next image, closes when empty
 - **Zoom**: wheel (centred on the pointer), double-click, `+` / `-`; 20%–800%; click the percentage to reset to 100%
