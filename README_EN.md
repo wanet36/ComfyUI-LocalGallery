@@ -125,6 +125,9 @@ Text only, no thumbnails — built for bulk editing and copying.
 - **Always follows the Gallery tab**: it lists whatever the Gallery tab is filtered to, and switching to Favorites does **not** change it (same for the tab badge)
 - No need to select anything first — it lists every image in the list that has a prompt
 - Each entry: index + filename + full prompt, with **Copy** / **Delete** on the right
+- **Click a card to select that prompt** (click again to deselect, `Shift` for a range, `Ctrl / ⌘` to keep only that one); the index becomes `✓1` `✓2`, the footer shows "N prompts selected", and **Select all / Invert / Clear** apply to prompts too
+- What you select is the **prompt only**: the node outputs those strings on `prompts` and returns an empty `images` list; image selection still lives in the Gallery tab, the two are independent (if both are selected, the Prompts tab wins)
+- The text is still selectable with the mouse for copying — a drag is not treated as a card click
 - **Copy all** exports in order, separated by blank lines — ready to feed the next batch
 - Auto-loads on scroll (60 per page); prompts are read six at a time and cached
 - Coming back to the tab remembers which mode you were in
