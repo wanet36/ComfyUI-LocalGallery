@@ -308,7 +308,7 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 |---|---|---|
 | `images` | IMAGE（列表） | 每张选中图片，`[1,H,W,3]` float32，0~1 |
 | `prompts` | STRING（列表） | 与图片一一对应的提示词（执行时按同名文件现读） |
-| `filenames` | STRING（列表） | 主文件名，**不含扩展名**（`a.png` → `a`），便于和 SaveImage 对账 |
+| `filenames` | STRING（列表） | 主文件名，**不含扩展名**；**跟着当前页签走**：图库 / 收藏页给图片名，提示词页（含无匹配档）给提示词名 |
 
 `OUTPUT_IS_LIST = (True, True, True)`，和原 `DanbooruGalleryNode` 一致：下游节点会**按列表逐条执行**（接 KSampler 会为每张图各跑一次）。
 

@@ -309,7 +309,7 @@ Every field is also editable from the Settings panel; editing the JSON by hand w
 |---|---|---|
 | `images` | IMAGE (list) | Each selected image, `[1,H,W,3]` float32, 0–1 |
 | `prompts` | STRING (list) | Prompt for each image, read at execution time |
-| `filenames` | STRING (list) | File name **without extension** (`a.png` → `a`), handy for reconciling with SaveImage |
+| `filenames` | STRING (list) | File name **without extension**; **follows the active tab**: Gallery / Favorites give image names, the Prompts tab (including orphans) gives prompt names |
 
 `OUTPUT_IS_LIST = (True, True, True)`, same semantics as the original `DanbooruGalleryNode`: downstream nodes run **once per list item** (wired to KSampler, it generates every image).
 
