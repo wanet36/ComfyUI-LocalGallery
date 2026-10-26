@@ -194,7 +194,8 @@ class LocalGalleryBrowser:
 
             images.append(tensor)
             prompts.append(prompt)
-            filenames.append(Path(path).name)
+            # 只给主文件名，不带扩展名（下游拼前缀 / 命名更省一步）
+            filenames.append(Path(path).stem)
 
         # 提示词页的选中项：只输出提示词，不输出图片
         if prompt_items:
@@ -214,7 +215,7 @@ class LocalGalleryBrowser:
                 if not text:
                     text = item.get("prompt") or ""
                 picked_prompts.append(text)
-                picked_names.append(Path(path).name)
+                picked_names.append(Path(path).stem)
             if picked_prompts:
                 prompts = picked_prompts
                 # 没选图时 filenames 跟着提示词走，方便下游对照是哪张图
