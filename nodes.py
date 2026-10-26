@@ -15,7 +15,7 @@ import torch
 from PIL import Image, ImageOps
 
 from .gallery import describe_paths, is_path_allowed, load_config, scan_folder
-from .prompt_reader import find_sidecar_prompt, is_image_file
+from .prompt_reader import find_sidecar_prompt, is_image_file, read_prompt_file
 
 logger = logging.getLogger(__name__)
 
@@ -141,7 +141,15 @@ class LocalGalleryBrowser:
         signature = [folder_path or "", extra_paths or ""]
         # 提示词页的选中项也算输入变化（只选了提示词、没选图时也能触发重跑）
         for item in prompt_items:
-            signature.append("prompt:" + item.get("path", ""))
+            path = item.get("path", "")
+            signature.append("prompt:" + path)
+            # 孤儿提示词的文本被改过也要重跑
+            try:
+                p = Path(path)
+                if p.is_file():
+                    signature.append(str(p.stat().st_mtime_ns))
+            except OSError:
+                pass
         for item in items:
             path = item.get("path", "")
             signature.append(path)
@@ -209,7 +217,12 @@ class LocalGalleryBrowser:
                     continue
                 text = ""
                 try:
-                    text = read_prompt(path)
+                    p = Path(path)
+                    if p.is_file() and not is_image_file(p):
+                        # 无匹配提示词：给的就是 .txt 本身，直接读文件
+                        text = read_prompt_file(p)
+                    else:
+                        text = read_prompt(path)
                 except Exception as exc:
                     logger.warning(f"[LocalGallery] 提示词读取失败 {path}: {exc}")
                 if not text:

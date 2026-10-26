@@ -919,9 +919,14 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   border-color: var(--lg-accent);
   background: var(--lg-accent-soft);
 }
-.lgb-prompt.sel .idx {
+/* 选中顺序标在文件名后面，序号照常显示 */
+.lgb-prompt-head .pick {
+  flex: 0 0 auto;
+  margin-left: -2px;
   color: var(--lg-accent);
+  font-size: 10.5px;
   font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }
 .lgb-prompt:hover {
   border-color: var(--lg-line-2);
@@ -945,13 +950,18 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   font-variant-numeric: tabular-nums;
 }
 .lgb-prompt-head .nm {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
   color: var(--lg-text-2);
   font-size: 11px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/* 把「复制 / 删除」推到最右，让 ✓ 紧跟在文件名后面 */
+.lgb-prompt-head .grow {
+  flex: 1 1 auto;
+  min-width: 0;
 }
 .lgb-prompt-head .cp {
   flex: 0 0 auto;
@@ -3409,6 +3419,28 @@ app.registerExtension({
         return splitPaths(folderWidget()?.value);
       }
 
+      // 换了路径之后，把已经不在这些目录下的提示词选中项扔掉，
+      // 否则切换文件夹后会静默地把别的目录的提示词也输出出去
+      function prunePromptSelection() {
+        const roots = getPaths().map((p) =>
+          p.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase()
+        );
+        if (!roots.length) return;
+        let changed = false;
+        for (const path of [...state.promptSel.keys()]) {
+          const flat = path.replace(/\\/g, "/").toLowerCase();
+          if (!roots.some((root) => flat === root || flat.startsWith(`${root}/`))) {
+            state.promptSel.delete(path);
+            changed = true;
+          }
+        }
+        if (changed) {
+          renumberPromptSelection();
+          commitSelection();
+          paintSelection();
+        }
+      }
+
       function setPaths(list, { refreshNow = true } = {}) {
         const cleaned = splitPaths(Array.isArray(list) ? list.join("\n") : String(list || ""));
         const widget = folderWidget();
@@ -3420,6 +3452,7 @@ app.registerExtension({
         }
         rememberPathsOnServer(cleaned);
         renderChips();
+        prunePromptSelection();
         app.graph.setDirtyCanvas(true, true);
         if (refreshNow) refresh();
       }
@@ -3810,9 +3843,9 @@ app.registerExtension({
       }
 
       /* ---------------- 选择 ---------------- */
-      // 提示词页（且不是孤儿档）时，底栏操作的对象是提示词本身
+      // 提示词页（含「无匹配提示词」档）时，底栏操作的对象是提示词本身
       function onPromptsTab() {
-        return activeTab === "prompts" && state.promptMode !== "orphans";
+        return activeTab === "prompts";
       }
 
       function commitSelection() {
@@ -3945,7 +3978,7 @@ app.registerExtension({
           if (badge) badge.textContent = order !== undefined ? String(order + 1) : "";
         });
         // 提示词页：底栏改看提示词的选中数（图片那套选择保持不动）
-        const onPrompts = activeTab === "prompts" && state.promptMode !== "orphans";
+        const onPrompts = activeTab === "prompts";
         const count = onPrompts ? state.promptSel.size : state.selected.size;
         setTpl(selLabel, onPrompts ? "已选 {n} 条提示词" : "已选 {n}", { n: count });
         selLabel.classList.toggle("on", count > 0);
@@ -4820,7 +4853,14 @@ app.registerExtension({
           setTitle(cp, "复制这条提示词");
           const del = el("span", "cp del", "删除");
           setTitle(del, "只删除提示词文件，图片保留（可在回收站恢复）");
-          head.append(el("span", "idx", String(index + 1)), el("span", "nm", item.name), cp, del);
+          head.append(
+            el("span", "idx", String(index + 1)),
+            el("span", "nm", item.name),
+            el("span", "pick"),
+            el("span", "grow"),
+            cp,
+            del
+          );
           const body = el("div", "lgb-prompt-body");
           card.append(head, body);
           // 点卡片 = 选中这条提示词（只输出提示词，不输出图片）
@@ -4853,6 +4893,11 @@ app.registerExtension({
       }
 
       /* ---- 提示词卡片的选择：只选提示词，不选图片 ---- */
+      // 当前这一档（提示词 / 无匹配提示词）的列表，Shift 连选用它算区间
+      function activePromptList() {
+        return state.promptMode === "orphans" ? state.orphanItems || [] : promptItems();
+      }
+
       function renumberPromptSelection() {
         const ordered = [...state.promptSel.entries()].sort((a, b) => a[1] - b[1]);
         state.promptSel.clear();
@@ -4860,7 +4905,7 @@ app.registerExtension({
       }
 
       function togglePromptSelect(item, index, { range = false, exclusive = false } = {}) {
-        const list = promptItems();
+        const list = activePromptList();
         if (state.pickMode === "single") {
           if (state.promptSel.size === 1 && state.promptSel.has(item.path)) {
             state.promptSel.clear();
@@ -4891,18 +4936,27 @@ app.registerExtension({
         paintSelection();
       }
 
-      // 选中态：卡片加 sel、序号换成「✓顺序号」，鼠标悬停说明只会输出提示词
+      // 选中态：卡片加 sel、文件名后面标「✓顺序号」，鼠标悬停说明只会输出提示词
       function paintPromptSelection() {
-        promptList.querySelectorAll(".lgb-prompt").forEach((dom) => {
-          const order = state.promptSel.get(dom.dataset.path);
-          const on = order !== undefined;
-          dom.classList.toggle("sel", on);
-          setTitle(
-            dom,
-            on ? "已选中：只输出提示词，不输出图片" : "点击选中这条提示词（只输出提示词，不输出图片）"
-          );
-          const idx = dom.querySelector(".idx");
-          if (idx) idx.textContent = on ? `✓${order + 1}` : dom.dataset.idx || "";
+        [promptList, orphanList].forEach((list) => {
+          list.querySelectorAll(".lgb-prompt").forEach((dom) => {
+            const order = state.promptSel.get(dom.dataset.path);
+            const on = order !== undefined;
+            dom.classList.toggle("sel", on);
+            setTitle(
+              dom,
+              on
+                ? "已选中：只输出提示词，不输出图片"
+                : "点击选中这条提示词（只输出提示词，不输出图片）"
+            );
+            const idx = dom.querySelector(".idx");
+            if (idx) idx.textContent = dom.dataset.idx || "";
+            const pick = dom.querySelector(".pick");
+            if (pick) {
+              pick.textContent = on ? `✓${order + 1}` : "";
+              pick.style.display = on ? "" : "none";
+            }
+          });
         });
       }
 
@@ -4982,16 +5036,36 @@ app.registerExtension({
         slice.forEach((item, offset) => {
           const index = orphanRendered + offset;
           const card = el("div", "lgb-prompt");
+          card.dataset.path = item.path;
+          card.dataset.idx = String(index + 1);
           const head = el("div", "lgb-prompt-head");
           const cp = el("span", "cp", "复制");
           setTitle(cp, "复制这条提示词");
           const del = el("span", "cp del", "删除");
           setTitle(del, "把这个提示词文件移到回收站（本来就没有对应图片）");
-          head.append(el("span", "idx", String(index + 1)), el("span", "nm", item.name), cp, del);
+          head.append(
+            el("span", "idx", String(index + 1)),
+            el("span", "nm", item.name),
+            el("span", "pick"),
+            el("span", "grow"),
+            cp,
+            del
+          );
           const dir = el("div", "lgb-prompt-dir", item.dir || "");
           dir.title = item.path || "";
           const body = el("div", "lgb-prompt-body");
           card.append(head, dir, body);
+          // 孤儿提示词也能选：本来就没有图片，选中的就是这条文本本身
+          card.addEventListener("click", (evt) => {
+            if (cp.contains?.(evt.target) || del.contains?.(evt.target)) return;
+            const sel = window.getSelection();
+            if (sel && !sel.isCollapsed && body.contains(sel.anchorNode)) return;
+            togglePromptSelect(item, index, {
+              range: evt.shiftKey,
+              exclusive: evt.ctrlKey || evt.metaKey,
+            });
+            ensurePrompt(item).then(() => commitSelection());
+          });
           cp.addEventListener("click", async (evt) => {
             evt.stopPropagation();
             const entry = await ensurePrompt(item);
@@ -5006,6 +5080,7 @@ app.registerExtension({
         });
         orphanList.append(frag);
         orphanRendered += slice.length;
+        paintPromptSelection();
       }
 
       btnOrphanCopyAll.addEventListener("click", async () => {
@@ -7577,6 +7652,8 @@ app.registerExtension({
         const paths = fromFavorites ? overridePaths.filter(Boolean) : getPaths();
         state.source = fromFavorites ? "favorites" : "paths";
         state.invalid = [];
+        // 路径变了（换了目录 / 重新扫描）就把不在这些目录下的提示词选中项清掉
+        if (!fromFavorites) prunePromptSelection();
         if (!paths.length) {
           state.items = [];
           state.orphanPrompts = 0;
@@ -7984,7 +8061,7 @@ app.registerExtension({
       btnAll.addEventListener("click", () => {
         if (onPromptsTab()) {
           state.promptSel.clear();
-          promptItems().forEach((item, index) => state.promptSel.set(item.path, index));
+          activePromptList().forEach((item, index) => state.promptSel.set(item.path, index));
           commitSelection();
           paintSelection();
           return;
@@ -7999,7 +8076,7 @@ app.registerExtension({
           const previous = new Set(state.promptSel.keys());
           state.promptSel.clear();
           let order = 0;
-          promptItems().forEach((item) => {
+          activePromptList().forEach((item) => {
             if (!previous.has(item.path)) {
               state.promptSel.set(item.path, order);
               order += 1;
