@@ -125,7 +125,7 @@ Text only, no thumbnails — built for bulk editing and copying.
 - **Always follows the Gallery tab**: it lists whatever the Gallery tab is filtered to, and switching to Favorites does **not** change it (same for the tab badge)
 - No need to select anything first — it lists every image in the list that has a prompt
 - Each entry: index + filename + full prompt, with **Copy** / **Delete** on the right
-- **Click a card to select that prompt** (click again to deselect, `Shift` for a range, `Ctrl / ⌘` to keep only that one); the index becomes `✓1` `✓2`, the footer shows "N prompts selected", and **Select all / Invert / Clear** apply to prompts too
+- **Click a card to select that prompt** (click again to deselect, `Shift` for a range, `Ctrl / ⌘` to keep only that one); the index stays put and a `✓1` `✓2` marker appears **after the file name** showing the order, the footer shows "N prompts selected", and **Select all / Invert / Clear** apply to prompts too
 - What you select is the **prompt only**: the node outputs those strings on `prompts` and returns an empty `images` list; image selection still lives in the Gallery tab, the two are independent (if both are selected, the Prompts tab wins)
 - The text is still selectable with the mouse for copying — a drag is not treated as a card click
 - **Copy all** exports in order, separated by blank lines — ready to feed the next batch
@@ -133,6 +133,8 @@ Text only, no thumbnails — built for bulk editing and copying.
 - Coming back to the tab remembers which mode you were in
 
 **Orphan prompts** is the second mode: prompt files that have no image with the same name in that folder. Counting always uses the **Gallery** path list, so it works from the Favorites tab too. They can never show up in the grid, so this is the only place to read them. Each entry shows the file, its folder and the prompt text; copy one or all.
+
+These cards **are selectable too** (the `✓` sits after the file name): they have no image by definition, so selecting them outputs only the prompt text and `images` stays empty. They share one selection set with the first mode and count together.
 
 ### Caption
 
