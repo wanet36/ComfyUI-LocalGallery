@@ -911,11 +911,25 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   background: var(--lg-elev);
   border: 1px solid var(--lg-line);
   border-radius: var(--lg-r);
+  cursor: pointer;
   transition: border-color var(--lg-dur), background var(--lg-dur);
+}
+/* 选中的提示词：只标记这张卡片，和缩略图的选择互不影响 */
+.lgb-prompt.sel {
+  border-color: var(--lg-accent);
+  background: var(--lg-accent-soft);
+}
+.lgb-prompt.sel .idx {
+  color: var(--lg-accent);
+  font-weight: 600;
 }
 .lgb-prompt:hover {
   border-color: var(--lg-line-2);
   background: var(--lg-hover);
+}
+.lgb-prompt.sel:hover {
+  border-color: var(--lg-accent);
+  background: var(--lg-accent-soft);
 }
 .lgb-prompt-head {
   display: flex;
@@ -2444,6 +2458,10 @@ const I18N_EN = {
   "这些提示词文件同目录下找不到同名图片，缩略图网格里没有可挂载的位置": "These prompt files have no matching image in the same folder",
   "每个提示词文件都能对上同名图片": "Every prompt file has a matching image",
   "已选 {n} 张": "{n} selected",
+  "已选 {n} 条提示词": "{n} prompts selected",
+  "点击选中这条提示词（只输出提示词，不输出图片）": "Click to select this prompt (prompt only, no image)",
+  "已选中：只输出提示词，不输出图片": "Selected: outputs the prompt only, no image",
+  "已清空提示词的选择": "Prompt selection cleared",
   "共 {n} 张": "{n} images",
   "已读到 {n} 张图，悬停看提示词": "{n} images loaded, hover to preview prompts",
   "已读到 {n} 张图": "{n} images loaded",
@@ -3280,9 +3298,14 @@ app.registerExtension({
         // 这样切到收藏页时提示词页不会跟着变成收藏的图
         galleryVisible: [],
         selected: new Map(),
+        // 提示词页的选中项（path -> 顺序）：只出提示词、不出图，和图片选择互不影响
+        promptSel: new Map(),
+        promptLast: -1,
         // 单选 / 多选：单选时每次只保留一张（点同一张可取消）
         pickMode: readPickMode(),
         promptCache: new Map(),
+        // 提示词页当前是哪一档（prompts / orphans）：paintSelection 要据此换计数口径
+        promptMode: "prompts",
         rendered: 0,
         columns: [],
         filter: "",
@@ -3787,24 +3810,38 @@ app.registerExtension({
       }
 
       /* ---------------- 选择 ---------------- */
+      // 提示词页（且不是孤儿档）时，底栏操作的对象是提示词本身
+      function onPromptsTab() {
+        return activeTab === "prompts" && state.promptMode !== "orphans";
+      }
+
       function commitSelection() {
         const ordered = [...state.selected.entries()].sort((a, b) => a[1] - b[1]);
         const items = ordered.map(([path]) => ({
           path,
           prompt: state.promptCache.get(path)?.prompt || "",
         }));
-        if (selectionWidget) selectionWidget.value = JSON.stringify({ items });
+        // 提示词页的选中项单独一列：后端只取它的文本，不加载对应图片
+        const prompts = [...state.promptSel.entries()]
+          .sort((a, b) => a[1] - b[1])
+          .map(([path]) => ({ path, prompt: state.promptCache.get(path)?.prompt || "" }));
+        if (selectionWidget) selectionWidget.value = JSON.stringify({ items, prompts });
         app.graph.setDirtyCanvas(true, true);
       }
 
       function restoreSelection() {
         state.selected.clear();
+        state.promptSel.clear();
         if (!selectionWidget?.value) return;
         try {
           const data = JSON.parse(selectionWidget.value);
           const items = Array.isArray(data?.items) ? data.items : [];
           items.forEach((item, index) => {
             if (item && typeof item.path === "string") state.selected.set(item.path, index);
+          });
+          const prompts = Array.isArray(data?.prompts) ? data.prompts : [];
+          prompts.forEach((item, index) => {
+            if (item && typeof item.path === "string") state.promptSel.set(item.path, index);
           });
         } catch (err) {
           /* 忽略脏数据 */
@@ -3907,9 +3944,13 @@ app.registerExtension({
           const badge = dom.querySelector(".lgb-order");
           if (badge) badge.textContent = order !== undefined ? String(order + 1) : "";
         });
-        setTpl(selLabel, "已选 {n}", { n: state.selected.size });
-        selLabel.classList.toggle("on", state.selected.size > 0);
-        btnCopy.style.display = state.selected.size ? "" : "none";
+        // 提示词页：底栏改看提示词的选中数（图片那套选择保持不动）
+        const onPrompts = activeTab === "prompts" && state.promptMode !== "orphans";
+        const count = onPrompts ? state.promptSel.size : state.selected.size;
+        setTpl(selLabel, onPrompts ? "已选 {n} 条提示词" : "已选 {n}", { n: count });
+        selLabel.classList.toggle("on", count > 0);
+        btnCopy.style.display = count ? "" : "none";
+        paintPromptSelection();
         // 转换页上的「范围」跟着选中数变
         syncConvertPage();
         // 批量删除只在能看见缩略图的页面出现，避免在反推页/提示词页误点
@@ -4607,6 +4648,7 @@ app.registerExtension({
       function setPromptMode(mode, { render = true } = {}) {
         const next = mode === "orphans" ? "orphans" : "prompts";
         promptMode = next;
+        state.promptMode = next;
         const isOrphans = next === "orphans";
         subPrompts.classList.toggle("on", !isOrphans);
         subOrphans.classList.toggle("on", isOrphans);
@@ -4771,6 +4813,8 @@ app.registerExtension({
         slice.forEach((item, offset) => {
           const index = promptRendered + offset;
           const card = el("div", "lgb-prompt");
+          card.dataset.path = item.path;
+          card.dataset.idx = String(index + 1);
           const head = el("div", "lgb-prompt-head");
           const cp = el("span", "cp", "复制");
           setTitle(cp, "复制这条提示词");
@@ -4779,6 +4823,18 @@ app.registerExtension({
           head.append(el("span", "idx", String(index + 1)), el("span", "nm", item.name), cp, del);
           const body = el("div", "lgb-prompt-body");
           card.append(head, body);
+          // 点卡片 = 选中这条提示词（只输出提示词，不输出图片）
+          card.addEventListener("click", (evt) => {
+            if (cp.contains?.(evt.target) || del.contains?.(evt.target)) return;
+            // 刚拖选过正文就不算点击，别把拖选当成选中卡片
+            const sel = window.getSelection();
+            if (sel && !sel.isCollapsed && body.contains(sel.anchorNode)) return;
+            togglePromptSelect(item, index, {
+              range: evt.shiftKey,
+              exclusive: evt.ctrlKey || evt.metaKey,
+            });
+            ensurePrompt(item).then(() => commitSelection());
+          });
           cp.addEventListener("click", async (evt) => {
             evt.stopPropagation();
             const entry = await ensurePrompt(item);
@@ -4793,6 +4849,61 @@ app.registerExtension({
         });
         promptList.append(frag);
         promptRendered += slice.length;
+        paintPromptSelection();
+      }
+
+      /* ---- 提示词卡片的选择：只选提示词，不选图片 ---- */
+      function renumberPromptSelection() {
+        const ordered = [...state.promptSel.entries()].sort((a, b) => a[1] - b[1]);
+        state.promptSel.clear();
+        ordered.forEach(([path], i) => state.promptSel.set(path, i));
+      }
+
+      function togglePromptSelect(item, index, { range = false, exclusive = false } = {}) {
+        const list = promptItems();
+        if (state.pickMode === "single") {
+          if (state.promptSel.size === 1 && state.promptSel.has(item.path)) {
+            state.promptSel.clear();
+          } else {
+            state.promptSel.clear();
+            state.promptSel.set(item.path, 0);
+          }
+        } else if (range && state.promptLast >= 0) {
+          const from = Math.min(state.promptLast, index);
+          const to = Math.max(state.promptLast, index);
+          for (let i = from; i <= to; i += 1) {
+            const entry = list[i];
+            if (entry && !state.promptSel.has(entry.path)) {
+              state.promptSel.set(entry.path, state.promptSel.size);
+            }
+          }
+        } else if (exclusive) {
+          state.promptSel.clear();
+          state.promptSel.set(item.path, 0);
+        } else if (state.promptSel.has(item.path)) {
+          state.promptSel.delete(item.path);
+          renumberPromptSelection();
+        } else {
+          state.promptSel.set(item.path, state.promptSel.size);
+        }
+        state.promptLast = index;
+        commitSelection();
+        paintSelection();
+      }
+
+      // 选中态：卡片加 sel、序号换成「✓顺序号」，鼠标悬停说明只会输出提示词
+      function paintPromptSelection() {
+        promptList.querySelectorAll(".lgb-prompt").forEach((dom) => {
+          const order = state.promptSel.get(dom.dataset.path);
+          const on = order !== undefined;
+          dom.classList.toggle("sel", on);
+          setTitle(
+            dom,
+            on ? "已选中：只输出提示词，不输出图片" : "点击选中这条提示词（只输出提示词，不输出图片）"
+          );
+          const idx = dom.querySelector(".idx");
+          if (idx) idx.textContent = on ? `✓${order + 1}` : dom.dataset.idx || "";
+        });
       }
 
       /* ---------------- 孤儿提示词页 ---------------- */
@@ -7871,12 +7982,34 @@ app.registerExtension({
       });
 
       btnAll.addEventListener("click", () => {
+        if (onPromptsTab()) {
+          state.promptSel.clear();
+          promptItems().forEach((item, index) => state.promptSel.set(item.path, index));
+          commitSelection();
+          paintSelection();
+          return;
+        }
         state.selected.clear();
         visibleItems().forEach((item, index) => state.selected.set(item.path, index));
         commitSelection();
         paintSelection();
       });
       btnInvert.addEventListener("click", () => {
+        if (onPromptsTab()) {
+          const previous = new Set(state.promptSel.keys());
+          state.promptSel.clear();
+          let order = 0;
+          promptItems().forEach((item) => {
+            if (!previous.has(item.path)) {
+              state.promptSel.set(item.path, order);
+              order += 1;
+            }
+          });
+          state.promptLast = -1;
+          commitSelection();
+          paintSelection();
+          return;
+        }
         const previous = new Set(state.selected.keys());
         state.selected.clear();
         let order = 0;
@@ -7890,6 +8023,14 @@ app.registerExtension({
         paintSelection();
       });
       btnNone.addEventListener("click", () => {
+        if (onPromptsTab()) {
+          state.promptSel.clear();
+          state.promptLast = -1;
+          commitSelection();
+          paintSelection();
+          setStatus("已清空提示词的选择");
+          return;
+        }
         state.selected.clear();
         state.lastClicked = -1;
         commitSelection();
@@ -7897,7 +8038,10 @@ app.registerExtension({
         setStatus("已清空选择");
       });
       btnCopy.addEventListener("click", async () => {
-        const ordered = [...state.selected.entries()].sort((a, b) => a[1] - b[1]);
+        const promptsTab = onPromptsTab();
+        const ordered = [...(promptsTab ? state.promptSel : state.selected).entries()].sort(
+          (a, b) => a[1] - b[1]
+        );
         const lines = [];
         for (const [path] of ordered) {
           if (!state.promptCache.has(path)) {

@@ -57,6 +57,26 @@ def parse_selection(selection_data) -> list[dict]:
     return result
 
 
+def parse_prompt_selection(selection_data) -> list[dict]:
+    """提示词页的选中项：{"prompts": [{"path": "...", "prompt": "..."}]}
+
+    path 是图片路径（提示词按同名规则从 .txt 等文件读），但图片本身不参与输出。
+    """
+    data = _parse_json(selection_data, {})
+    if not isinstance(data, dict):
+        return []
+    rows = data.get("prompts")
+    if not isinstance(rows, list):
+        return []
+    result = []
+    for row in rows:
+        if isinstance(row, dict) and row.get("path"):
+            result.append({"path": str(row["path"]), "prompt": str(row.get("prompt") or "")})
+        elif isinstance(row, str) and row:
+            result.append({"path": row, "prompt": ""})
+    return result
+
+
 def load_image_tensor(path: str) -> torch.Tensor | None:
     """读图 -> [1,H,W,3] float32 RGB。失败返回 None。"""
     try:
@@ -117,7 +137,11 @@ class LocalGalleryBrowser:
     @classmethod
     def IS_CHANGED(cls, folder_path="", selection_data="{}", extra_paths="[]", **kwargs):
         items = parse_selection(selection_data)
+        prompt_items = parse_prompt_selection(selection_data)
         signature = [folder_path or "", extra_paths or ""]
+        # 提示词页的选中项也算输入变化（只选了提示词、没选图时也能触发重跑）
+        for item in prompt_items:
+            signature.append("prompt:" + item.get("path", ""))
         for item in items:
             path = item.get("path", "")
             signature.append(path)
@@ -136,10 +160,12 @@ class LocalGalleryBrowser:
 
     def run(self, folder_path="", selection_data="{}", extra_paths="[]", **kwargs):
         items = parse_selection(selection_data)
-        if not items:
+        prompt_items = parse_prompt_selection(selection_data)
+        # 提示词页选了东西就不走自动兜底，否则「只选提示词」会被兜底的图顶掉
+        if not items and not prompt_items:
             items = self._fallback_items(folder_path, extra_paths)
 
-        if not items:
+        if not items and not prompt_items:
             logger.info("[LocalGallery] 未选择任何图片，输出占位图")
             return ([PLACEHOLDER], [""], [""])
 
@@ -170,8 +196,35 @@ class LocalGalleryBrowser:
             prompts.append(prompt)
             filenames.append(Path(path).name)
 
-        if not images:
+        # 提示词页的选中项：只输出提示词，不输出图片
+        if prompt_items:
+            picked_prompts, picked_names = [], []
+            for item in prompt_items:
+                path = item.get("path", "")
+                if not path:
+                    continue
+                if not is_path_allowed(Path(path)):
+                    logger.warning(f"[LocalGallery] 路径被 allowed_roots 拦截：{path}")
+                    continue
+                text = ""
+                try:
+                    text = read_prompt(path)
+                except Exception as exc:
+                    logger.warning(f"[LocalGallery] 提示词读取失败 {path}: {exc}")
+                if not text:
+                    text = item.get("prompt") or ""
+                picked_prompts.append(text)
+                picked_names.append(Path(path).name)
+            if picked_prompts:
+                prompts = picked_prompts
+                # 没选图时 filenames 跟着提示词走，方便下游对照是哪张图
+                if not images:
+                    filenames = picked_names
+
+        if not images and not prompts:
             return ([PLACEHOLDER], [""], [""])
+        if not images:
+            logger.info("[LocalGallery] 只选中了提示词，images 输出为空")
         return (images, prompts, filenames)
 
     @staticmethod
