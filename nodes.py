@@ -77,6 +77,14 @@ def parse_prompt_selection(selection_data) -> list[dict]:
     return result
 
 
+def parse_filename_source(selection_data) -> str:
+    """filenames 输出用谁的名字："prompt" = 面板停在提示词页，其它 = 图片页（默认）。"""
+    data = _parse_json(selection_data, {})
+    if isinstance(data, dict) and str(data.get("filename_from") or "").lower() == "prompt":
+        return "prompt"
+    return "image"
+
+
 def load_image_tensor(path: str) -> torch.Tensor | None:
     """读图 -> [1,H,W,3] float32 RGB。失败返回 None。"""
     try:
@@ -139,6 +147,8 @@ class LocalGalleryBrowser:
         items = parse_selection(selection_data)
         prompt_items = parse_prompt_selection(selection_data)
         signature = [folder_path or "", extra_paths or ""]
+        # 页签决定了 filenames 用谁的名字，切页签也要重跑
+        signature.append("from:" + parse_filename_source(selection_data))
         # 提示词页的选中项也算输入变化（只选了提示词、没选图时也能触发重跑）
         for item in prompt_items:
             path = item.get("path", "")
@@ -169,6 +179,7 @@ class LocalGalleryBrowser:
     def run(self, folder_path="", selection_data="{}", extra_paths="[]", **kwargs):
         items = parse_selection(selection_data)
         prompt_items = parse_prompt_selection(selection_data)
+        filename_from = parse_filename_source(selection_data)
         # 提示词页选了东西就不走自动兜底，否则「只选提示词」会被兜底的图顶掉
         if not items and not prompt_items:
             items = self._fallback_items(folder_path, extra_paths)
@@ -231,8 +242,9 @@ class LocalGalleryBrowser:
                 picked_names.append(Path(path).stem)
             if picked_prompts:
                 prompts = picked_prompts
-                # 没选图时 filenames 跟着提示词走，方便下游对照是哪张图
-                if not images:
+                # 名字跟页签走：停在提示词页就给提示词名；
+                # 图库页仍给图片名（没选图时才用提示词名兜底）
+                if filename_from == "prompt" or not images:
                     filenames = picked_names
 
         if not images and not prompts:

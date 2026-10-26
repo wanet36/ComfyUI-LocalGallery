@@ -3316,6 +3316,8 @@ app.registerExtension({
         promptCache: new Map(),
         // 提示词页当前是哪一档（prompts / orphans）：paintSelection 要据此换计数口径
         promptMode: "prompts",
+        // 当前页签：filenames 输出跟着它走（图库页给图片名，提示词页给提示词名）
+        tab: "gallery",
         rendered: 0,
         columns: [],
         filter: "",
@@ -3858,7 +3860,9 @@ app.registerExtension({
         const prompts = [...state.promptSel.entries()]
           .sort((a, b) => a[1] - b[1])
           .map(([path]) => ({ path, prompt: state.promptCache.get(path)?.prompt || "" }));
-        if (selectionWidget) selectionWidget.value = JSON.stringify({ items, prompts });
+        // filenames 跟当前页签走：图库/收藏页给图片名，提示词页给提示词名
+        const filename_from = state.tab === "prompts" ? "prompt" : "image";
+        if (selectionWidget) selectionWidget.value = JSON.stringify({ items, prompts, filename_from });
         app.graph.setDirtyCanvas(true, true);
       }
 
@@ -4698,6 +4702,8 @@ app.registerExtension({
 
       function switchTab(name) {
         activeTab = ["favorites", "prompts", "reverse", "convert"].includes(name) ? name : "gallery";
+        // filenames 跟页签走，切页就要把新的口径写进 selection_data
+        state.tab = activeTab;
         const isGallery = activeTab === "gallery";
         const isFav = activeTab === "favorites";
         const isPrompts = activeTab === "prompts";
@@ -4722,6 +4728,7 @@ app.registerExtension({
         hideTip();
         updateTabCounts();
         paintSelection(); // 底栏按钮跟着页面变（反推页不显示批量删除）
+        commitSelection(); // 页签变了 => filenames 的口径也变了
         if (isReverse) {
           ensureReversePage();
           return;
