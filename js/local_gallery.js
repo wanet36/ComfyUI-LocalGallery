@@ -181,6 +181,14 @@ const CSS = `
   min-width: 0;
 }
 
+/* 批量删除按钮组：图库/收藏挂在路径栏，提示词页整块挪进提示词栏 */
+.lgb-bulk {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+
 /* 分段控件 */
 .lgb-tabs {
   display: flex;
@@ -2646,7 +2654,7 @@ const I18N_EN = {
   "这些文件会被【移到回收站】（不是永久删除），连同同名提示词文件一起移走。": "These files move to the Trash (not permanently deleted), together with their prompt files.",
   "需要恢复时，把回收站里的文件移回原目录即可。": "To restore, move them back from the Trash.",
   "只把同名提示词文件（.txt / .caption / .json…）移到回收站，图片不会被删除。": "Only the prompt files (.txt / .caption / .json…) move to the Trash; images are kept.",
-  "需要时可以点路径栏的「回收站」随时恢复。": "You can restore them from Trash anytime.",
+  "需要时可以随时从「回收站」恢复（图库页路径栏进入）。": "Restore them from Trash anytime (Trash button on the gallery tab).",
   "没有文件被移动": "No files moved",
   "没有文件被移走": "Nothing was moved",
   "永久删除": "Delete permanently",
@@ -3642,21 +3650,23 @@ app.registerExtension({
       btnTrash.append(icon("recycle", 14), tspan("回收站"));
       setTitle(btnTrash, "查看被删除的图片和提示词，可随时恢复");
 
-      /* 选中图之后的两个批量删除：从底栏挪到回收站左边（不占底栏位置） */
+      /* 选中之后的两个批量删除：从底栏挪到回收站左边（不占底栏位置）。
+         只做一套按钮，切到提示词页时整块挪进提示词栏，避免两处状态各说各话 */
+      const bulk = el("div", "lgb-bulk");
       const btnDelPrompts = el("button", "lgb-btn sm warn", "删提示词");
       btnDelPrompts.style.display = "none";
       setTitle(btnDelPrompts, "只把同名提示词文件移到回收站，图片保留（可随时恢复）");
       const btnDelSel = el("button", "lgb-btn sm warn", "删除选中");
       btnDelSel.style.display = "none";
       setTitle(btnDelSel, "图片 + 同名提示词一起移到回收站（可随时恢复）");
+      bulk.append(btnDelPrompts, btnDelSel);
 
       rowAdd.append(
         btnBrowse,
         btnSettings,
         btnReload,
         el("div", "lgb-head-spacer"),
-        btnDelPrompts,
-        btnDelSel,
+        bulk,
         btnTrash
       );
 
@@ -3990,18 +4000,22 @@ app.registerExtension({
         paintPromptSelection();
         // 转换页上的「范围」跟着选中数变
         syncConvertPage();
-        // 批量删除只在能看见缩略图的页面出现，避免在反推页/提示词页误点
-        const allowBulkDelete = activeTab === "gallery" || activeTab === "favorites";
-        btnDelSel.style.display = allowBulkDelete && state.selected.size ? "" : "none";
-        setTpl(
+        // 批量删除：图库/收藏按图片选中数，提示词页两档按提示词选中数
+        const bulkCount = onPrompts ? state.promptSel.size : state.selected.size;
+        btnDelSel.style.display = bulkCount ? "" : "none";
+        setTpl(btnDelSel, bulkCount ? "删除选中 ({n})" : "删除选中", { n: bulkCount });
+        setTitle(
           btnDelSel,
-          state.selected.size ? "删除选中 ({n})" : "删除选中",
-          { n: state.selected.size }
+          onPrompts
+            ? "把选中的提示词文件移到回收站，图片保留（可随时恢复）"
+            : "图片 + 同名提示词一起移到回收站（可随时恢复）"
         );
         const selectedList = [...state.selected.keys()];
         const byPath = new Map(state.items.map((it) => [it.path, it]));
         const promptCount = selectedList.filter((path) => byPath.get(path)?.has_prompt).length;
-        btnDelPrompts.style.display = allowBulkDelete && promptCount ? "" : "none";
+        // 提示词页上「删除选中」已经只删提示词，不用再摆一个「删提示词」
+        const showDelPrompts = !onPrompts && promptCount > 0;
+        btnDelPrompts.style.display = showDelPrompts ? "" : "none";
         setTpl(btnDelPrompts, promptCount ? "删提示词 ({n})" : "删提示词", { n: promptCount });
         setTitleT(btnDelPrompts, "只移走 {n} 个同名提示词文件，图片保留（可随时恢复）", {
           n: promptCount,
@@ -4722,9 +4736,11 @@ app.registerExtension({
         pageConvert.classList.toggle("off", !isConvert);
         // 缩略图密度对两个网格页（图库 / 收藏）都有效
         sizeWrap.style.display = isGridView ? "" : "none";
-        // 路径栏（浏览 / 设置 / 刷新 / 删除 / 回收站）只在图库页出现，
-        // 其它页面用不到，藏起来给内容让地方
-        rowAdd.style.display = isGallery ? "" : "none";
+        // 路径栏（浏览 / 设置 / 刷新 / 回收站）只在能看图的两个页签出现；
+        // 提示词页把整块批量删除挪进提示词栏，那里也有一颗「删除选中」
+        rowAdd.style.display = isGridView ? "" : "none";
+        if (isPrompts) promptBar.append(bulk);
+        else if (isGridView) rowAdd.insertBefore(bulk, btnTrash);
         hideTip();
         updateTabCounts();
         paintSelection(); // 底栏按钮跟着页面变（反推页不显示批量删除）
@@ -5194,9 +5210,11 @@ app.registerExtension({
             const gone = new Set(moved);
             state.items = state.items.filter((it) => !gone.has(it.path));
             state.galleryVisible = state.galleryVisible.filter((it) => !gone.has(it.path));
+            let promptSelDirty = false;
             gone.forEach((p) => {
               state.selected.delete(p);
               state.promptCache.delete(p);
+              if (state.promptSel.delete(p)) promptSelDirty = true;
             });
             // 删掉的图同时取消收藏，免得收藏页里留着死链
             const favGone = moved.filter((p) => state.favorites.has(p));
@@ -5210,6 +5228,7 @@ app.registerExtension({
                 /* 收藏清理失败不影响删除结果 */
               });
             }
+            if (promptSelDirty) renumberPromptSelection();
             renumberSelection();
             commitSelection();
             state.rendered = 0;
@@ -5235,8 +5254,14 @@ app.registerExtension({
         if (!list.length) return;
         if (!deleteAllowed()) return;
         const byPath = new Map(state.items.map((it) => [it.path, it]));
-        const images = list.filter((path) => byPath.get(path)?.has_prompt);
-        const targets = images.length ? images : list;
+        // 图片路径 → 删它的同名提示词；提示词文件路径（孤儿）→ 直接删它自己。
+        // 后端两种都认，这里只把「没有提示词的图片」挡掉，免得产生失败项
+        const targets = list.filter((path) => (byPath.has(path) ? byPath.get(path).has_prompt : true));
+        const images = targets.filter((path) => byPath.has(path));
+        if (!targets.length) {
+          setStatus("选中的条目没有同名提示词，没什么可删的", { error: true });
+          return;
+        }
         const preview = targets.slice(0, 10).map((p) => "  " + shortName(p)).join("\n");
         const more = targets.length > 10 ? "\n  " + t("… 等 {n} 个", { n: targets.length }) : "";
 
@@ -5246,7 +5271,7 @@ app.registerExtension({
           body:
             t("只把同名提示词文件（.txt / .caption / .json…）移到回收站，图片不会被删除。") +
             "\n" +
-            t("需要时可以点路径栏的「回收站」随时恢复。") +
+            t("需要时可以随时从「回收站」恢复（图库页路径栏进入）。") +
             "\n\n" +
             preview +
             more,
@@ -5279,10 +5304,32 @@ app.registerExtension({
                 setTitle(badge, "没有同名提示词文件");
               }
             });
+            // 选中项跟着删掉，别让「已选 N」还挂着已经进了回收站的文件。
+            // 后端 moved 里给的是 .txt 的路径，图片路径得按 has_prompt 再兜一遍
+            const gonePaths = new Set(moved.map((m) => m.path));
+            let selChanged = false;
+            for (const key of [...state.promptSel.keys()]) {
+              const item = byPath.get(key);
+              if (gonePaths.has(key) || (item && !item.has_prompt)) {
+                state.promptSel.delete(key);
+                selChanged = true;
+              }
+            }
+            if (selChanged) {
+              renumberPromptSelection();
+              commitSelection();
+            }
+            // 孤儿列表里被删的立即摘掉，别出现点不开的空卡片
+            const orphanBefore = state.orphanItems?.length || 0;
+            if (orphanBefore) {
+              state.orphanItems = state.orphanItems.filter((it) => !gonePaths.has(it.path));
+              const cut = orphanBefore - state.orphanItems.length;
+              if (cut > 0) state.orphanCount = Math.max(0, (state.orphanCount || orphanBefore) - cut);
+            }
             updateTabCounts();
             paintSelection();
-            if (state.orphanItems?.length) loadOrphans({ force: true });
-            if (activeTab === "prompts") renderPrompts({ reset: true });
+            if (orphanBefore) loadOrphans({ force: true });
+            if (activeTab === "prompts" && promptMode !== "orphans") renderPrompts({ reset: true });
             setStatus(
               `${t("已移走 {n} 个提示词文件（图片保留）", { n: moved.length })}${
                 failed.length ? t("，{n} 个失败", { n: failed.length }) : ""
@@ -7997,6 +8044,12 @@ app.registerExtension({
       btnSettings.addEventListener("click", () => openSettings());
       btnTrash.addEventListener("click", () => openTrash());
       btnDelSel.addEventListener("click", () => {
+        // 提示词页选的是提示词，这里就只删提示词文件，别顺手把图片带走
+        if (activeTab === "prompts") {
+          const picked = [...state.promptSel.keys()];
+          if (picked.length) deletePrompts(picked);
+          return;
+        }
         if (!state.selected.size) return;
         deletePaths([...state.selected.keys()]);
       });

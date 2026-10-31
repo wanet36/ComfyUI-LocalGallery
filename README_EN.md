@@ -57,7 +57,7 @@ Five bands, top to bottom:
 | Area | What's there |
 |---|---|
 | **Tab bar** | `Gallery / Favorites N / Prompts N / Caption N / Convert N` plus the "columns" slider |
-| **Path bar** (Gallery only) | Browse, Settings, ⟳ rescan, Delete prompts, Delete selected, Trash |
+| **Path bar** (Gallery / Favorites) | Browse, Settings, ⟳ rescan, Delete prompts, Delete selected, Trash |
 | **Filter row** | Include subfolders, Only with prompt, search-scope button, search box, `hits / total` |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page) |
 | **Footer** | Single / multi-select toggle, selection count, status text, Select all / Invert / Clear selection / Copy prompts |
@@ -95,7 +95,7 @@ Paths can be folders, single images, or a mix. The same file reached through sev
 
 ### Gallery
 
-Default tab. Filtering, searching, selecting and bulk delete live here — it's also the only tab that shows the path bar.
+Default tab. Filtering, searching, selecting and bulk delete live here — its path bar (and the bulk delete buttons in it) is shared with the Favorites tab.
 
 The **search scope** button cycles through three modes (remembered):
 
@@ -128,6 +128,7 @@ Text only, no thumbnails — built for bulk editing and copying.
 - **Click a card to select that prompt** (click again to deselect, `Shift` for a range, `Ctrl / ⌘` to keep only that one); the index stays put and a `✓1` `✓2` marker appears **after the file name** showing the order, the footer shows "N prompts selected", and **Select all / Invert / Clear** apply to prompts too
 - What you select is the **prompt only**: the node outputs those strings on `prompts` and returns an empty `images` list; image selection still lives in the Gallery tab, the two are independent (if both are selected, the Prompts tab wins)
 - The text is still selectable with the mouse for copying — a drag is not treated as a card click
+- Once something is selected, a **Delete selected (N)** button appears on the prompt bar: it moves only those prompt files to Trash and never touches the images (same action as the per-card Delete, just in bulk)
 - **Copy all** exports in order, separated by blank lines — ready to feed the next batch
 - Auto-loads on scroll (60 per page); prompts are read six at a time and cached
 - Coming back to the tab remembers which mode you were in
@@ -135,6 +136,8 @@ Text only, no thumbnails — built for bulk editing and copying.
 **Orphan prompts** is the second mode: prompt files that have no image with the same name in that folder. Counting always uses the **Gallery** path list, so it works from the Favorites tab too. They can never show up in the grid, so this is the only place to read them. Each entry shows the file, its folder and the prompt text; copy one or all.
 
 These cards **are selectable too** (the `✓` sits after the file name): they have no image by definition, so selecting them outputs only the prompt text and `images` stays empty. They share one selection set with the first mode and count together.
+
+Both modes get the **Delete selected (N)** button (same place as the first mode and the Gallery tab), which sends the selected prompts to Trash.
 
 ### Caption
 
