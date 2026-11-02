@@ -90,26 +90,70 @@ def register_routes() -> bool:
         return True
 
     # ------------------------------------------------------------------ list
+    async def _scan_request(raw: str, recursive: bool, only_with_prompt: bool, extensions: list[str]):
+        loop = asyncio.get_running_loop()
+        try:
+            return (
+                await loop.run_in_executor(
+                    None,
+                    lambda: scan_folder(
+                        raw,
+                        recursive=recursive,
+                        only_with_prompt=only_with_prompt,
+                        extensions=extensions or None,
+                    ),
+                ),
+                None,
+            )
+        except Exception as exc:
+            logger.exception("[LocalGallery] 扫描目录失败")
+            return None, _deny(f"扫描失败：{exc}", 500)
+
     @routes.get(f"{NODE_API_PREFIX}/list")
     async def local_gallery_list(request: web.Request):
         raw = request.query.get("path", "")
         recursive = request.query.get("recursive", "0") in ("1", "true", "True")
         only_with_prompt = request.query.get("only_with_prompt", "0") in ("1", "true", "True")
         extensions = [e for e in request.query.get("ext", "").split(",") if e.strip()]
-        loop = asyncio.get_running_loop()
+        result, err = await _scan_request(raw, recursive, only_with_prompt, extensions)
+        if err is not None:
+            return err
+        return web.json_response(result)
+
+    @routes.post(f"{NODE_API_PREFIX}/list")
+    async def local_gallery_list_post(request: web.Request):
+        """POST 版扫描：收藏多时路径列表会撑爆 URL（aiohttp 431），改走请求体。"""
         try:
-            result = await loop.run_in_executor(
-                None,
-                lambda: scan_folder(
-                    raw,
-                    recursive=recursive,
-                    only_with_prompt=only_with_prompt,
-                    extensions=extensions or None,
-                ),
-            )
-        except Exception as exc:
-            logger.exception("[LocalGallery] 扫描目录失败")
-            return _deny(f"扫描失败：{exc}", 500)
+            payload = await request.json()
+        except Exception:
+            return _deny("请求体不是合法 JSON")
+        if not isinstance(payload, dict):
+            return _deny("请求体必须是对象")
+
+        raw = payload.get("path", "")
+        if isinstance(payload.get("paths"), list):
+            raw = "\n".join(str(p) for p in payload["paths"] if str(p or "").strip())
+        if not isinstance(raw, str) or not raw.strip():
+            return _deny("缺少 path 参数")
+
+        def as_bool(value) -> bool:
+            if isinstance(value, str):
+                return value.strip().lower() in ("1", "true", "yes", "on")
+            return bool(value)
+
+        recursive = as_bool(payload.get("recursive"))
+        only_with_prompt = as_bool(payload.get("only_with_prompt"))
+        ext = payload.get("ext") or []
+        if isinstance(ext, str):
+            extensions = [e.strip() for e in ext.split(",") if e.strip()]
+        elif isinstance(ext, list):
+            extensions = [str(e).strip() for e in ext if str(e or "").strip()]
+        else:
+            extensions = []
+
+        result, err = await _scan_request(raw, recursive, only_with_prompt, extensions)
+        if err is not None:
+            return err
         return web.json_response(result)
 
     # ----------------------------------------------------------------- browse

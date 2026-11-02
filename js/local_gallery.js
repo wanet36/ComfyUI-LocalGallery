@@ -2386,6 +2386,10 @@ async function apiJson(path, options) {
   try {
     data = await response.json();
   } catch (err) {
+    // 431/414 是请求本身太长（收藏太多时路径撑爆 URL），说清楚让人知道怎么办
+    if ([413, 414, 431].includes(response.status)) {
+      throw new Error(t("请求太长（HTTP {code}）：路径太多，请分批浏览", { code: response.status }));
+    }
     throw new Error(t("接口返回异常（HTTP {code}）", { code: response.status }));
   }
   if (!response.ok) throw new Error(data?.error || `HTTP ${response.status}`);
@@ -2553,6 +2557,7 @@ const I18N_EN = {
   "无法连接 ComfyUI 服务": "Cannot reach the ComfyUI server",
   "未知错误": "Unknown error",
   "接口返回异常（HTTP {code}）": "Unexpected response (HTTP {code})",
+  "请求太长（HTTP {code}）：路径太多，请分批浏览": "Request too large (HTTP {code}): too many paths in one go — browse in smaller batches",
   "点「浏览」加一个文件夹开始": "Click Browse to add a folder",
   "还没有图片 —— 点路径栏的「浏览」加一个文件夹。": "No images yet — use Browse in the path bar to add a folder.",
   "筛出 {a} / {b} 张": "{a} / {b} images",
@@ -7734,10 +7739,12 @@ app.registerExtension({
         if (!silent) setTpl(countLabel, "读取中…");
         setStatus("正在扫描 {n} 个路径…", { vars: { n: paths.length } });
 
-        const url =
-          `/local_gallery/list?path=${encodeURIComponent(paths.join("\n"))}` +
-          `&recursive=${recursiveChk.input.checked ? 1 : 0}` +
-          `&only_with_prompt=${onlyPromptChk.input.checked ? 1 : 0}`;
+        // 走 POST：收藏多的时候（几百张）路径拼进 URL 会被服务端 431/400 顶回来
+        const body = {
+          path: paths.join("\n"),
+          recursive: recursiveChk.input.checked ? 1 : 0,
+          only_with_prompt: onlyPromptChk.input.checked ? 1 : 0,
+        };
 
         let items = [];
         let invalid = [];
@@ -7746,7 +7753,11 @@ app.registerExtension({
         let orphan = 0;
         let orphanSamples = [];
         try {
-          const data = await apiJson(url);
+          const data = await apiJson("/local_gallery/list", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          });
           items = Array.isArray(data.items) ? data.items : [];
           invalid = Array.isArray(data.invalid) ? data.invalid : [];
           truncated = !!data.truncated;
@@ -7791,7 +7802,8 @@ app.registerExtension({
 
           const resumed = state.restoredFromStore ? t("已接上上次的路径") + " · " : "";
           state.restoredFromStore = false;
-          const multi = paths.length > 1 ? t("{n} 个路径 · ", { n: paths.length }) : "";
+          // 收藏页的 paths 就是收藏条目本身，报「188 个路径」没意义
+          const multi = !fromFavorites && paths.length > 1 ? t("{n} 个路径 · ", { n: paths.length }) : "";
           const statusTpl =
             orphan > 0
               ? "{resumed}{multi}已读到 {n} 张图，悬停看提示词 · {o} 个提示词匹配不到图片"

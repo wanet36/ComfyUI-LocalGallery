@@ -325,6 +325,7 @@ Every field is also editable from the Settings panel; editing the JSON by hand w
 | Method | Path | Purpose |
 |---|---|---|
 | GET | `/local_gallery/list?path=&recursive=0&only_with_prompt=0` | Scan folders, returns `width` / `height` per image |
+| POST | `/local_gallery/list` with `{"path"}` or `{"paths":[...]}` | Same scan via request body — used by the UI so hundreds of favorites never overflow the URL |
 | GET | `/local_gallery/thumb?path=&size=320` | Thumbnail (disk cache) |
 | GET | `/local_gallery/prompt?path=` | Prompt for one image; sidecar files report `sidecar: true` |
 | GET | `/local_gallery/orphans?path=&recursive=0` | Orphan prompt details |

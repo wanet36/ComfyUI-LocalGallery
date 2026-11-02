@@ -324,6 +324,7 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 | 方法 | 路径 | 说明 |
 |---|---|---|
 | GET | `/local_gallery/list?path=&recursive=0&only_with_prompt=0` | 目录扫描，返回每张图的 `width` / `height` |
+| POST | `/local_gallery/list` 请求体 `{"path": "..."}` 或 `{"paths": ["..."]}` | 同上，路径多时走请求体（收藏几百张不会撑爆 URL，前端默认用它） |
 | GET | `/local_gallery/thumb?path=&size=320` | 缩略图（磁盘缓存） |
 | GET | `/local_gallery/prompt?path=` | 单图提示词；给侧车文件时按侧车规则读（`sidecar: true`） |
 | GET | `/local_gallery/orphans?path=&recursive=0` | 无匹配提示词明细 |
