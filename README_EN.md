@@ -58,7 +58,7 @@ Five bands, top to bottom:
 |---|---|
 | **Tab bar** | `Gallery / Favorites N / Prompts N / Caption N / Convert N` plus the "columns" slider |
 | **Path bar** (Gallery / Favorites) | Browse, Settings, ⟳ rescan, Delete prompts, Delete selected, Trash |
-| **Filter row** | Include subfolders, Only with prompt, search-scope button, search box, `hits / total` |
+| **Filter row** | Include subfolders, Only with prompt, sort button, search-scope button, search box, `hits / total` |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page) |
 | **Footer** | Single / multi-select toggle, selection count, status text, Select all / Invert / Clear selection / Copy prompts |
 
@@ -80,6 +80,7 @@ Paths can be folders, single images, or a mix. The same file reached through sev
 <img src="docs/hover.jpg" width="500" alt="Hover to read the prompt">
 
 - Click a thumbnail to select/deselect, `Shift + click` to select a range
+- **Sorting**: the pill button in the filter row cycles `Default` (scan order) → `Name ↑` → `Name ↓` → `Time ↓` (newest first) → `Time ↑` (oldest first). File names compare by value (`0002` before `0010`), time is the file's modified time. Applies to Gallery, Favorites and Prompts alike, never touches the selection, and is remembered locally
 - **Drag a rectangle with the left button** to select everything it touches (plain drag replaces the selection, `Ctrl / ⌘ / Shift` + drag adds to it); dragging near the top/bottom edge auto-scrolls. Works on the Gallery and Favorites tabs
 - The **Multi / Single** button at the far left of the footer switches modes: Multi accumulates a batch (numbered in click order); Single keeps exactly one image, and clicking it again deselects — `Shift` is ignored in Single. The mode is remembered locally across reloads
 - In Multi mode, `Ctrl / ⌘ + click` still narrows the selection down to that one image

@@ -2741,6 +2741,17 @@ const I18N_EN = {
   "按文件名过滤（空格分隔多个关键词）": "Filter by file name (space separated)",
   "按文件名过滤，空格分隔多个关键词": "Filter by file name (space separated)",
   "搜索范围：名称 → 提示词 → 全部（点一下切一个）": "Search scope: name → prompt → all (click to cycle)",
+  "排序：默认 → 文件名 ↑ → 文件名 ↓ → 时间（新→旧） → 时间（旧→新）": "Sort: default → name ↑ → name ↓ → newest first → oldest first",
+  "默认": "Default",
+  "名称 ↑": "Name ↑",
+  "名称 ↓": "Name ↓",
+  "时间 ↓": "Time ↓",
+  "时间 ↑": "Time ↑",
+  "排序：扫描顺序（点一下切一个）": "Sort: scan order (click to cycle)",
+  "按文件名从小到大（数字按数值比，2 在 10 前面）": "File name A→Z (numbers by value: 2 before 10)",
+  "按文件名从大到小": "File name Z→A",
+  "按修改时间，从新到旧": "Modified time, newest first",
+  "按修改时间，从旧到新": "Modified time, oldest first",
   "悬停缩略图可预览提示词": "Hover a thumbnail to preview its prompt",
   "已选 0": "0 selected",
   "已选 0 张": "0 selected",
@@ -3364,6 +3375,8 @@ app.registerExtension({
         favorites: new Map(),
         source: "paths",
         searchMode: "name",
+        // 排序：default / name-asc / name-desc / time-desc / time-asc
+        sortMode: "default",
         promptHits: null,
         searchSeq: 0,
         // 本次是从 localStorage 接上的路径（用一次就清，避免以后每次刷新都提示）
@@ -3720,11 +3733,15 @@ app.registerExtension({
       searchInput.className = "lgb-input";
       setPh(searchInput, "按文件名过滤（空格分隔多个关键词）");
       searchBox.append(searchModeBtn, searchInput);
+      // 排序：默认 / 文件名 ↑↓ / 修改时间 ↑↓，点一下切一个
+      const sortModeBtn = el("button", "lgb-mode", "默认");
+      setTitle(sortModeBtn, "排序：默认 → 文件名 ↑ → 文件名 ↓ → 时间（新→旧） → 时间（旧→新）");
       const countLabel = el("span", "lgb-count", "—");
       filters.append(
         recursiveChk.label,
         onlyPromptChk.label,
         el("div", "lgb-head-spacer"),
+        sortModeBtn,
         searchBox,
         countLabel
       );
@@ -4889,6 +4906,7 @@ app.registerExtension({
         if (langSegSync) langSegSync();
         applyLangNodes();
         applySearchMode(state.searchMode, { persist: false });
+        applySortMode(state.sortMode, { persist: false, rerender: false });
         updateTabCounts();
         paintSelection();
         syncConvertPage();
@@ -7556,6 +7574,67 @@ app.registerExtension({
         }
       }
 
+      /* ---------------- 排序（默认 / 文件名 / 修改时间，各带正反） ---------------- */
+      const SORT_MODES = [
+        { key: "default", label: "默认", hint: "排序：扫描顺序（点一下切一个）" },
+        { key: "name-asc", label: "名称 ↑", hint: "按文件名从小到大（数字按数值比，2 在 10 前面）" },
+        { key: "name-desc", label: "名称 ↓", hint: "按文件名从大到小" },
+        { key: "time-desc", label: "时间 ↓", hint: "按修改时间，从新到旧" },
+        { key: "time-asc", label: "时间 ↑", hint: "按修改时间，从旧到新" },
+      ];
+
+      const SORT_KEY = "localGalleryBrowser.sort";
+
+      // 文件名比较：带数字的按数值比，避免 0010 排在 0002 前面
+      function compareByName(a, b) {
+        const byName = String(a.name || "").localeCompare(String(b.name || ""), undefined, {
+          numeric: true,
+          sensitivity: "base",
+        });
+        return byName || String(a.path || "").localeCompare(String(b.path || ""));
+      }
+
+      function sortItemsInPlace() {
+        const list = state.items;
+        if (!list.length) return;
+        const mode = state.sortMode;
+        if (mode === "name-asc") list.sort(compareByName);
+        else if (mode === "name-desc") list.sort((a, b) => compareByName(b, a));
+        else if (mode === "time-desc") {
+          list.sort((a, b) => (Number(b.mtime) || 0) - (Number(a.mtime) || 0) || compareByName(a, b));
+        } else if (mode === "time-asc") {
+          list.sort((a, b) => (Number(a.mtime) || 0) - (Number(b.mtime) || 0) || compareByName(a, b));
+        } else {
+          // 默认：回到扫描时记下的原顺序
+          list.sort((a, b) => (a.__ord || 0) - (b.__ord || 0));
+        }
+      }
+
+      function applySortMode(key, { persist = true, rerender = true } = {}) {
+        const mode = SORT_MODES.find((m) => m.key === key) || SORT_MODES[0];
+        state.sortMode = mode.key;
+        setTpl(sortModeBtn, mode.label);
+        setTitle(sortModeBtn, mode.hint);
+        sortModeBtn.classList.toggle("primary", mode.key !== "default");
+        if (persist) {
+          try {
+            localStorage.setItem(SORT_KEY, mode.key);
+          } catch (err) {
+            /* 忽略 */
+          }
+        }
+        if (!rerender) return;
+        sortItemsInPlace();
+        // 排序变了，选中徽标、提示词页、反推页都得按新顺序重画
+        state.rendered = 0;
+        renderGrid();
+        updateTabCounts();
+        if (activeTab === "prompts") {
+          if (promptMode === "orphans") renderOrphans({ reset: true });
+          else renderPrompts({ reset: true });
+        }
+      }
+
       function refreshViews() {
         renderGrid();
         updateTabCounts();
@@ -7973,6 +8052,11 @@ app.registerExtension({
         if (seq !== state.seq) return;
 
         state.items = items;
+        // 记下扫描顺序（排序切回「默认」时用），再按当前排序规则排一遍
+        items.forEach((it, i) => {
+          it.__ord = i;
+        });
+        sortItemsInPlace();
         state.invalid = invalid;
         // 孤儿提示词属于「图库」：收藏页的扫描结果不能覆盖它，
         // 否则在收藏页切到提示词页时「无匹配提示词」会变成 0
@@ -8285,6 +8369,10 @@ app.registerExtension({
         applySearchMode(SEARCH_MODES[(idx + 1) % SEARCH_MODES.length].key);
         runSearch();
       });
+      sortModeBtn.addEventListener("click", () => {
+        const idx = SORT_MODES.findIndex((m) => m.key === state.sortMode);
+        applySortMode(SORT_MODES[(idx + 1) % SORT_MODES.length].key);
+      });
       btnPromptCopyAll.addEventListener("click", async () => {
         const all = promptItems();
         if (!all.length) {
@@ -8426,6 +8514,13 @@ app.registerExtension({
         /* 忽略 */
       }
       applySearchMode(state.searchMode, { persist: false });
+      try {
+        const savedSort = localStorage.getItem(SORT_KEY);
+        if (SORT_MODES.some((m) => m.key === savedSort)) state.sortMode = savedSort;
+      } catch (err) {
+        /* 忽略 */
+      }
+      applySortMode(state.sortMode, { persist: false, rerender: false });
       updateTabCounts();
       applyHints();
       loadFavorites();
