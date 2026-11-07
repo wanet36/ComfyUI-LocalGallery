@@ -634,6 +634,29 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   background: var(--lg-sunken);
   padding: 6px;
 }
+
+/* 框选矩形：挂在 .lgb-canvas 上，坐标就用 grid 的 rect，滚动时自动跟着走 */
+.lgb-canvas {
+  position: relative;
+  min-height: 1px;
+}
+
+.lgb-marquee {
+  position: absolute;
+  z-index: 6;
+  pointer-events: none;
+  border: 1px solid var(--lg-accent-2);
+  border-radius: 3px;
+  background: var(--lg-accent-soft);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25) inset;
+}
+
+/* 框选过程中禁止选中文字/图片，否则会拖出一片蓝色选区 */
+.lgb-wrap.lgb-marquee-on,
+.lgb-wrap.lgb-marquee-on * {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
 .lgb-scroll.off {
   display: none;
 }
@@ -3707,8 +3730,11 @@ app.registerExtension({
       );
 
       const gridScroll = el("div", "lgb-scroll");
+      // canvas 只做定位容器：框选矩形挂这里，renderGrid 清 grid 时不会被一起清掉
+      const canvas = el("div", "lgb-canvas");
       const grid = el("div", "lgb-grid");
-      gridScroll.append(grid);
+      canvas.append(grid);
+      gridScroll.append(canvas);
 
       /* 页 */
       const pageGallery = el("div", "lgb-page");
@@ -4029,6 +4055,182 @@ app.registerExtension({
         // 正在看反推页时，改了选中就跟着换列表（跑任务中不打断）
         if (activeTab === "reverse" && !revRunning()) ensureReversePage();
       }
+      /* ---------------- 框选（左键拖出矩形批量选图） ---------------- */
+      const marqueeBox = el("div", "lgb-marquee");
+      marqueeBox.style.display = "none";
+      canvas.append(marqueeBox);
+
+      let dragSel = null; // 拖动中的临时状态
+      let swallowClickUntil = 0;
+
+      // 坐标基准统一用 grid 的 rect：它是 canvas 的内容原点，随滚动一起动
+      function gridPoint(evt) {
+        const rect = grid.getBoundingClientRect();
+        return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+      }
+
+      function beginMarquee(evt) {
+        if (evt.button !== 0) return;
+        if (activeTab !== "gallery" && activeTab !== "favorites") return;
+        // 只从缩略图区域起拖，工具栏 / 筛选栏 / 底栏上的拖动不算框选
+        const sc = gridScroll.getBoundingClientRect();
+        if (
+          evt.clientX < sc.left ||
+          evt.clientX > sc.right ||
+          evt.clientY < sc.top ||
+          evt.clientY > sc.bottom
+        ) {
+          return;
+        }
+        // 卡片右上角那排小图标（复制/收藏/预览/删除）不参与框选
+        if (evt.target.closest?.(".lgb-acts")) return;
+        const p = gridPoint(evt);
+        dragSel = {
+          sx: p.x,
+          sy: p.y,
+          cx: p.x,
+          cy: p.y,
+          clientX: evt.clientX,
+          clientY: evt.clientY,
+          add: evt.ctrlKey || evt.metaKey || evt.shiftKey,
+          base: new Map(state.selected),
+          moved: false,
+        };
+        // 一律用捕获阶段：ComfyUI 的画布逻辑会在冒泡途中截住指针事件
+        window.addEventListener("pointermove", onMarqueeMove, { passive: false, capture: true });
+        window.addEventListener("pointerup", endMarquee, { once: true, capture: true });
+        window.addEventListener("pointercancel", endMarquee, { once: true, capture: true });
+      }
+
+      function applyMarquee(box) {
+        if (!dragSel) return;
+        const rect = grid.getBoundingClientRect();
+        const hits = [];
+        grid.querySelectorAll(".lgb-item").forEach((dom) => {
+          const r = dom.getBoundingClientRect();
+          const left = r.left - rect.left;
+          const top = r.top - rect.top;
+          if (
+            left < box.right &&
+            left + r.width > box.left &&
+            top < box.bottom &&
+            top + r.height > box.top
+          ) {
+            hits.push(dom.dataset.path);
+          }
+        });
+        const next = dragSel.add ? new Map(dragSel.base) : new Map();
+        if (state.pickMode === "single") {
+          // 单选模式一次只留一张，多框也没意义
+          if (hits.length) next.set(hits[0], 0);
+          else next.clear();
+        } else {
+          hits.forEach((path) => {
+            if (!next.has(path)) next.set(path, next.size);
+          });
+        }
+        state.selected = next;
+        renumberSelection();
+        paintSelection();
+      }
+
+      function onMarqueeMove(evt) {
+        if (!dragSel) return;
+        dragSel.clientX = evt.clientX;
+        dragSel.clientY = evt.clientY;
+        const p = gridPoint(evt);
+        if (!dragSel.moved) {
+          if (Math.hypot(p.x - dragSel.sx, p.y - dragSel.sy) < 4) return;
+          dragSel.moved = true;
+          wrap.classList.add("lgb-marquee-on");
+          marqueeBox.style.display = "";
+          startEdgeScroll();
+        }
+        // 拖选期间别让浏览器顺手把卡片文字也选上
+        evt.preventDefault();
+        hideTip();
+        paintMarquee();
+      }
+
+      function paintMarquee() {
+        if (!dragSel) return;
+        const p = gridPoint(dragSel);
+        dragSel.cx = p.x;
+        dragSel.cy = p.y;
+        const left = Math.min(dragSel.sx, dragSel.cx);
+        const top = Math.min(dragSel.sy, dragSel.cy);
+        const width = Math.abs(dragSel.cx - dragSel.sx);
+        const height = Math.abs(dragSel.cy - dragSel.sy);
+        marqueeBox.style.left = `${left}px`;
+        marqueeBox.style.top = `${top}px`;
+        marqueeBox.style.width = `${width}px`;
+        marqueeBox.style.height = `${height}px`;
+        applyMarquee({ left, top, right: left + width, bottom: top + height });
+      }
+
+      // 拖到上下边缘时自动滚动，不然框一整屏以外的图得松手再来一次
+      let scrollRaf = 0;
+      function startEdgeScroll() {
+        if (scrollRaf) return;
+        const tick = () => {
+          if (!dragSel) {
+            scrollRaf = 0;
+            return;
+          }
+          const rect = gridScroll.getBoundingClientRect();
+          const y = dragSel.clientY;
+          const EDGE = 26;
+          let dy = 0;
+          if (y < rect.top + EDGE) dy = -Math.min(18, Math.ceil((rect.top + EDGE - y) / 3));
+          else if (y > rect.bottom - EDGE) dy = Math.min(18, Math.ceil((y - (rect.bottom - EDGE)) / 3));
+          if (dy) {
+            const before = gridScroll.scrollTop;
+            gridScroll.scrollTop = before + dy;
+            if (gridScroll.scrollTop !== before) paintMarquee();
+          }
+          scrollRaf = requestAnimationFrame(tick);
+        };
+        scrollRaf = requestAnimationFrame(tick);
+      }
+
+      function endMarquee() {
+        window.removeEventListener("pointermove", onMarqueeMove, { capture: true });
+        if (scrollRaf) {
+          cancelAnimationFrame(scrollRaf);
+          scrollRaf = 0;
+        }
+        const moved = !!dragSel?.moved;
+        dragSel = null;
+        marqueeBox.style.display = "none";
+        wrap.classList.remove("lgb-marquee-on");
+        if (!moved) return; // 没拖动 = 普通点击，交给卡片自己的处理
+        // 松手后浏览器还会补一个 click，不吞掉会把刚框选的又取消回来
+        swallowClickUntil = performance.now() + 300;
+        commitSelection();
+      }
+
+      // 捕获阶段吞掉框选结束那一下 click
+      grid.addEventListener(
+        "click",
+        (evt) => {
+          if (performance.now() < swallowClickUntil) {
+            evt.preventDefault();
+            evt.stopPropagation();
+          }
+        },
+        true
+      );
+      // ComfyUI 在 document 上处理画布指针事件，pointerdown 传到 gridScroll 之前就被拦了，
+      // 所以按下必须在 document 的捕获阶段接（pointermove/up 能正常冒泡）
+      document.addEventListener(
+        "pointerdown",
+        (evt) => {
+          if (!wrap.contains(evt.target)) return;
+          beginMarquee(evt);
+        },
+        true
+      );
+
       /* ---------------- 每行列数 ---------------- */
       let cols = COLS_DEFAULT;
       try {
