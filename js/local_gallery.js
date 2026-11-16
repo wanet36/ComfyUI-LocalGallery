@@ -2972,6 +2972,13 @@ const I18N_EN = {
   "搜提示词内容，全部包含才命中": "Search prompt text; all keywords must match",
   "名称或提示词，命中任意一个即可": "Name or prompt; any keyword matches",
   "浏览": "Browse",
+  "用 Windows 系统的文件夹选择框加入文件夹（可多选）": "Add folders with the Windows folder picker (multi-select)",
+  "面板内浏览：加单张图片、管理已加入的路径": "In-panel browser: add single images and manage paths",
+  "正在打开系统文件夹选择框…": "Opening the system folder picker…",
+  "没有选择文件夹": "No folder selected",
+  "已加入 {n} 个文件夹": "Added {n} folder(s)",
+  "系统选择框打不开（{err}），改用面板内浏览": "The system picker failed ({err}); switching to the in-panel browser",
+  "系统文件夹选择框只支持 Windows，请用面板内浏览": "The system folder picker only works on Windows — use the in-panel browser",
   "选择": "Choose",
   "按文件名过滤（空格分隔多个关键词）": "Filter by file name (space separated)",
   "按文件名过滤，空格分隔多个关键词": "Filter by file name (space separated)",
@@ -3947,7 +3954,11 @@ app.registerExtension({
       const rowAdd = el("div", "lgb-row lgb-bar");
       const btnBrowse = el("button", "lgb-btn primary");
       btnBrowse.append(icon("folder", 14), tspan("浏览"));
-      setTitle(btnBrowse, "选择文件夹或单张图片加入路径列表");
+      setTitle(btnBrowse, "用 Windows 系统的文件夹选择框加入文件夹（可多选）");
+      // 面板内浏览：加单张图片 / 管理已加入的路径
+      const btnBrowseApp = el("button", "lgb-btn ic");
+      btnBrowseApp.append(icon("expand"));
+      setTitle(btnBrowseApp, "面板内浏览：加单张图片、管理已加入的路径");
       const btnSettings = el("button", "lgb-btn ic");
       btnSettings.append(icon("gear"));
       setTitle(btnSettings, "设置：明暗主题、图片反推、收藏导出");
@@ -3981,6 +3992,7 @@ app.registerExtension({
 
       rowAdd.append(
         btnBrowse,
+        btnBrowseApp,
         btnSettings,
         btnReload,
         el("div", "lgb-head-spacer"),
@@ -8891,6 +8903,38 @@ app.registerExtension({
         updateTabCounts();
       }
 
+      /* ---------------- 系统文件夹选择框 ---------------- */
+      // Windows 自带的选择框（服务端弹），选完直接把目录加进路径列表
+      async function pickFolderNative() {
+        if (btnBrowse.disabled) return;
+        btnBrowse.disabled = true;
+        setStatus("正在打开系统文件夹选择框…");
+        try {
+          const data = await apiJson("/local_gallery/pick_folder", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ initial: getPaths()[0] || "" }),
+          });
+          const picked = Array.isArray(data.paths) ? data.paths.filter(Boolean) : [];
+          if (!picked.length) {
+            setStatus("没有选择文件夹");
+            return;
+          }
+          // 先加路径再自己刷一次，最后再写状态（refresh 会覆盖状态行）
+          setPaths([...getPaths(), ...picked], { refreshNow: false });
+          await refresh();
+          setStatus("已加入 {n} 个文件夹", { vars: { n: picked.length } });
+        } catch (err) {
+          setStatus("系统选择框打不开（{err}），改用面板内浏览", {
+            error: true,
+            vars: { err: err.message || err },
+          });
+          openBrowser(getPaths()[0] || "");
+        } finally {
+          btnBrowse.disabled = false;
+        }
+      }
+
       /* ---------------- 内置文件浏览器 ---------------- */
       function openBrowser(startPath) {
         let currentPath = startPath || getPaths()[0] || "";
@@ -9122,7 +9166,8 @@ app.registerExtension({
         load(currentPath);
       }
       /* ---------------- 事件 ---------------- */
-      btnBrowse.addEventListener("click", () => openBrowser(getPaths()[0] || ""));
+      btnBrowse.addEventListener("click", () => pickFolderNative());
+      btnBrowseApp.addEventListener("click", () => openBrowser(getPaths()[0] || ""));
       btnSettings.addEventListener("click", () => openSettings());
       btnTrash.addEventListener("click", () => openTrash());
       btnDelSel.addEventListener("click", () => {

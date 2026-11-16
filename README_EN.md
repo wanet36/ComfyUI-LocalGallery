@@ -64,12 +64,12 @@ Five bands, top to bottom:
 
 ### Adding paths
 
-The path list is the only entry point. Click **Browse** on the left of the path bar:
+The path list is the only entry point:
 
-- Drill down folders on the left, tick images on the right
-- **＋ Add this folder** adds the whole directory; **Add selected** adds only the ticked images
-- Added paths appear in that row (`N paths added`); remove one with `✕`, or use **Clear paths**
-- The dialog stays open so you can keep adding
+- **Browse** (leftmost in the path bar) opens the **native Windows folder picker** (the Explorer-style dialog); hold `Ctrl` to pick several folders at once
+- The dialog appears on the machine **running ComfyUI** — perfect for local use; if ComfyUI lives on a remote server, use the in-panel browser instead
+- The **⤢ icon** next to it opens the **in-panel browser**: drill down on the left, tick images on the right; **＋ Add this folder** takes the whole directory, **Add selected** only the ticked images; added paths sit in the row above with `✕` to remove one
+- If the native picker is unavailable (non-Windows, remote, blocked) the UI falls back to the in-panel browser and says why in the status bar
 
 Paths can be folders, single images, or a mix. The same file reached through several paths is only listed once.
 
@@ -346,6 +346,7 @@ Every field is also editable from the Settings panel; editing the JSON by hand w
 | GET | `/local_gallery/orphans?path=&recursive=0` | Orphan prompt details |
 | GET | `/local_gallery/raw?path=` | Original image |
 | GET | `/local_gallery/browse?path=` | Folder browsing (empty path returns drives) |
+| POST | `/local_gallery/pick_folder` | Native Windows folder picker on the ComfyUI machine (returns `paths`, or `canceled`) |
 | POST | `/local_gallery/describe` `{"paths":[...]}` | Describe a batch of paths |
 | POST | `/local_gallery/delete` `{"paths":[...]}` | Move to trash (image + prompt) |
 | POST | `/local_gallery/delete_prompts` `{"paths":[...]}` | Move only prompt files, keep images |

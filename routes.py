@@ -7,9 +7,12 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 from aiohttp import web
@@ -175,6 +178,58 @@ def register_routes() -> bool:
             logger.exception("[LocalGallery] 浏览目录失败")
             return _deny(f"浏览失败：{exc}", 500)
         return web.json_response(result)
+
+    # --------------------------------------------------------- native picker
+    @routes.post(f"{NODE_API_PREFIX}/pick_folder")
+    async def local_gallery_pick_folder(request: web.Request):
+        """在跑 ComfyUI 的这台机器上弹出 Windows 系统文件夹选择框。"""
+        if os.name != "nt":
+            return _deny("系统文件夹选择框只支持 Windows，请用面板内浏览", 400)
+        try:
+            payload = await request.json()
+        except Exception:
+            payload = {}
+        initial = ""
+        if isinstance(payload, dict):
+            initial = str(payload.get("initial") or "").strip()
+
+        script = Path(__file__).resolve().parent / "pick_folder.py"
+        if not script.is_file():
+            return _deny("缺少 pick_folder.py，无法打开系统选择框", 500)
+
+        args = [sys.executable, str(script)]
+        if initial:
+            args.append(initial)
+
+        def run() -> tuple[str, str]:
+            proc = subprocess.run(
+                args,
+                capture_output=True,
+                text=True,
+                timeout=300,
+                creationflags=0x08000000 if os.name == "nt" else 0,  # 别弹黑框
+            )
+            return proc.stdout or "", proc.stderr or ""
+
+        loop = asyncio.get_running_loop()
+        try:
+            stdout, stderr = await loop.run_in_executor(None, run)
+        except subprocess.TimeoutExpired:
+            return _deny("文件夹选择框 5 分钟没有响应，已放弃", 504)
+        except Exception as exc:
+            logger.exception("[LocalGallery] 打开系统文件夹选择框失败")
+            return _deny(f"打开文件夹选择框失败：{exc}", 500)
+
+        lines = [line for line in (stdout or "").strip().splitlines() if line.strip()]
+        if not lines:
+            return _deny(f"选择框没有返回结果：{(stderr or '').strip()[:200]}", 500)
+        try:
+            data = json.loads(lines[-1])
+        except Exception:
+            return _deny("选择框返回了无法解析的结果", 500)
+        if data.get("ok"):
+            logger.info("[LocalGallery] 系统选择框选了 %s 个文件夹", len(data.get("paths", [])))
+        return web.json_response(data)
 
     # ------------------------------------------------------------- orphans
     @routes.get(f"{NODE_API_PREFIX}/orphans")

@@ -64,12 +64,12 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 
 ### 加路径
 
-节点里**路径列表是唯一入口**，点路径栏最左的 **浏览**：
+节点里**路径列表是唯一入口**：
 
-- 左侧点盘符 / 文件夹下钻，右侧勾选图片
-- **＋ 加入此文件夹** = 整个目录加进来；**添加选中图片** = 只加勾选的那几张
-- 已加入的路径就在弹窗里那一行（`已加入 N 个路径`），点 `✕` 单独移除，右侧「清空路径」一键清空
-- 加完弹窗不会自动关，可以接着加下一个
+- **浏览**（路径栏最左）= 直接弹 **Windows 系统自带的文件夹选择框**（资源管理器同款），可按住 `Ctrl` 多选几个目录，确定后整批加入
+- 选择框是在**跑 ComfyUI 的这台机器**上弹的（本机使用最自然；如果 ComfyUI 跑在远程服务器，框会出现在服务器上，这时用旁边的面板内浏览）
+- 浏览右边的 **⤢ 图标** = 原来的**面板内浏览**：左侧点盘符 / 文件夹下钻，右侧勾选图片；**＋ 加入此文件夹** 加整个目录、**添加选中图片** 只加勾选的那几张；已加入的路径在弹窗里那一行，点 `✕` 单独移除
+- 系统选择框不可用时（非 Windows、远程、被拦截），会自动退回面板内浏览并在状态栏说明原因
 
 路径可以是文件夹、单张图片，也可以混着加；同一个文件被多条路径带出来只算一次。
 
@@ -345,6 +345,7 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 | GET | `/local_gallery/orphans?path=&recursive=0` | 无匹配提示词明细 |
 | GET | `/local_gallery/raw?path=` | 原图 |
 | GET | `/local_gallery/browse?path=` | 目录浏览（空 path 返回盘符列表） |
+| POST | `/local_gallery/pick_folder` | 在跑 ComfyUI 的机器上弹 Windows 文件夹选择框（成功返回 `paths`，取消返回 `canceled`） |
 | POST | `/local_gallery/describe` `{"paths":[...]}` | 批量描述图片路径 |
 | POST | `/local_gallery/delete` `{"paths":[...]}` | 移到回收站（图片 + 同名提示词） |
 | POST | `/local_gallery/delete_prompts` `{"paths":[...]}` | 只移走同名提示词，图片保留 |
