@@ -68,7 +68,7 @@ The path list is the only entry point:
 
 - **Browse** (leftmost in the path bar) opens the **native Windows folder picker** (the Explorer-style dialog); hold `Ctrl` to pick several folders at once
 - The dialog appears on the machine **running ComfyUI** — perfect for local use; if ComfyUI lives on a remote server, use the in-panel browser instead
-- The **⤢ icon** next to it opens the **in-panel browser**: drill down on the left, tick images on the right; **＋ Add this folder** takes the whole directory, **Add selected** only the ticked images; added paths sit in the row above with `✕` to remove one
+- The **⤢ icon** next to it opens the **slim in-panel browser**: one row with the **current path** plus **＋ Add this folder**, a **Recent** row to hop back to folders you visited, and a single **images** grid — tick some and hit **Add selected**. Added paths sit in the row above with `✕` to remove one (no path input, drive list or folder tree; use the system picker to change folders)
 - If the native picker is unavailable (non-Windows, remote, blocked) the UI falls back to the in-panel browser and says why in the status bar
 
 Paths can be folders, single images, or a mix. The same file reached through several paths is only listed once.

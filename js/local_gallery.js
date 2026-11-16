@@ -1608,6 +1608,33 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   flex: 0 0 auto;
 }
 /* 已加入的路径：从主面板搬过来的那排标签 */
+/* 当前路径：只读展示，太长省略，悬停看全文 */
+.lgb-br-path {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  background: var(--lg-sunken);
+  border: 1px solid var(--lg-line);
+  border-radius: var(--lg-r-sm);
+  font-family: var(--lg-mono);
+  font-size: 11.5px;
+  color: var(--lg-text-2);
+}
+.lgb-br-path .cap {
+  flex: 0 0 auto;
+  color: var(--lg-text-3);
+  font-family: var(--lg-font);
+}
+.lgb-br-path .val {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .lgb-br-saved {
   display: flex;
   align-items: center;
@@ -1628,13 +1655,6 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   border-radius: 99px;
   background: var(--lg-line-2);
 }
-.lgb-br-drives {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  padding: 8px 12px 0;
-  flex: 0 0 auto;
-}
 .lgb-br-msg {
   padding: 6px 12px 0;
   flex: 0 0 auto;
@@ -1649,7 +1669,7 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   padding: 8px 12px;
 }
 .lgb-br-col {
-  flex: 1 1 50%;
+  flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -1672,31 +1692,6 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   background: var(--lg-sunken);
   border: 1px solid var(--lg-line);
   border-radius: var(--lg-r);
-}
-.lgb-diritem {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 4px 7px;
-  border-radius: var(--lg-r-sm);
-  color: var(--lg-text-2);
-  font-size: 12px;
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  transition: background var(--lg-dur), color var(--lg-dur);
-}
-.lgb-diritem:hover {
-  background: var(--lg-accent-soft);
-  color: var(--lg-text);
-}
-.lgb-diritem .ico {
-  flex: 0 0 auto;
-  color: var(--lg-gold);
-}
-.lgb-diritem span {
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 .lgb-filegrid {
   display: grid;
@@ -2769,7 +2764,9 @@ const I18N_EN = {
   "当前生效：{path}": "In effect: {path}",
   "删除的图片和提示词都进这里，不是永久删除。": "Deleted images and prompts go here — nothing is permanently deleted.",
   "已加入 {n} 个路径": "{n} paths added",
-  "还没有加入路径": "No paths added yet",
+  "多选图片加入，或把整个文件夹加进来": "Tick images to add, or add the whole folder",
+  "当前：": "Current:",
+  "还没选目录": "No folder selected yet",
   "收藏模式 · {n} 张（悬停看提示词，⤢ 看大图，☆ 取消收藏）": "Favorites · {n} images (hover for prompts, ⤢ to preview, ☆ to unfavorite)",
   "{a} / {b} 张{done}": "{a} / {b} images{done}",
   "读取中": "loading",
@@ -2956,6 +2953,7 @@ const I18N_EN = {
   "+{n} 提示词": "+{n} prompts",
   "已加入 {n} 张图片": "{n} images added",
   "已加入：{path}": "Added: {path}",
+  "这个文件夹已经在列表里了": "That folder is already in the list",
   " · {n} 个失败": " · {n} failed",
   "全部": "All",
   "选中的 0 张": "0 selected",
@@ -3511,11 +3509,18 @@ function fmtSize(bytes) {
 }
 
 function splitPaths(raw) {
+  // 去重键：分隔符统一 + 去掉末尾斜杠 + 忽略大小写，
+  // 免得 D:/a/b 和 D://a//b 被当成两个不同路径
+  const key = (value) =>
+    value
+      .toLowerCase()
+      .replace(/[\\/]+/g, "/")
+      .replace(/\/+$/, "");
   return String(raw || "")
     .split(/[\r\n;|]+/)
     .map((s) => s.trim().replace(/^["']+|["']+$/g, "").trim())
     .filter(Boolean)
-    .filter((v, i, arr) => arr.findIndex((x) => x.toLowerCase() === v.toLowerCase()) === i);
+    .filter((v, i, arr) => arr.findIndex((x) => key(x) === key(v)) === i);
 }
 
 /* --------------------------------------------------------------- 扩展本体 */
@@ -8944,7 +8949,7 @@ app.registerExtension({
         const box = el("div", "lgb-br");
 
         const head = el("div", "lgb-br-head");
-        head.append(el("div", "title", "浏览本机路径"), el("div", "hint", "可多选图片，也可整目录加入"));
+        head.append(el("div", "title", "浏览本机路径"), el("div", "hint", "多选图片加入，或把整个文件夹加进来"));
         const btnClose = el("button", "lgb-btn warn", "关闭");
         setTitle(btnClose, "关闭（Esc / 点外面也行）");
         head.append(btnClose);
@@ -8952,15 +8957,12 @@ app.registerExtension({
         head.children[1].style.flex = "1 1 auto";
 
         const pathRow = el("div", "lgb-br-row");
-        const pathInput = document.createElement("input");
-        pathInput.className = "lgb-input";
-        setPh(pathInput, "粘贴路径后点「跳转」");
-        const btnGo = el("button", "lgb-btn", "跳转");
-        const btnUp = el("button", "lgb-btn", "↑ 上一级");
+        const pathLabel = el("div", "lgb-br-path");
+        const pathValue = el("span", "val", "");
+        pathLabel.append(el("span", "cap", "当前："), pathValue);
         const btnUseDir = el("button", "lgb-btn primary", "＋ 加入此文件夹");
-        pathRow.append(pathInput, btnGo, btnUp, btnUseDir);
+        pathRow.append(pathLabel, btnUseDir);
 
-        const drivesRow = el("div", "lgb-br-drives");
         // 已加入的路径列表（原来在主面板，挪到这里，能看全路径）
         const savedRow = el("div", "lgb-br-saved");
         const recentRow = el("div", "lgb-recent");
@@ -8969,16 +8971,13 @@ app.registerExtension({
         msg.style.display = "none";
 
         const body = el("div", "lgb-br-body");
-        const dirCol = el("div", "lgb-br-col");
-        const dirList = el("div", "lgb-br-list");
-        dirCol.append(el("h4", "", "文件夹"), dirList);
         const fileCol = el("div", "lgb-br-col");
         const fileTitle = el("h4", "", "图片");
         const fileList = el("div", "lgb-br-list");
         const fileGrid = el("div", "lgb-filegrid");
         fileList.append(fileGrid);
         fileCol.append(fileTitle, fileList);
-        body.append(dirCol, fileCol);
+        body.append(fileCol);
 
         const foot = el("div", "lgb-br-foot");
         const brCount = el("span", "lgb-count", "已选 0 张");
@@ -8988,7 +8987,7 @@ app.registerExtension({
         const btnReset = el("button", "lgb-btn", "取消选择");
         foot.append(brCount, footSpacer, btnReset, btnAddPicked);
 
-        box.append(head, pathRow, savedRow, recentRow, drivesRow, msg, body, foot);
+        box.append(head, pathRow, savedRow, recentRow, msg, body, foot);
         overlay.append(box);
         document.body.appendChild(overlay);
         renderPathChips(savedRow, { onChange: () => setMsg("路径列表已更新") });
@@ -9036,46 +9035,21 @@ app.registerExtension({
 
         async function load(path) {
           setMsg("");
-          dirList.replaceChildren(el("div", "lgb-empty", "读取中…"));
-          fileGrid.replaceChildren();
-          drivesRow.replaceChildren();
+          fileGrid.replaceChildren(el("div", "lgb-empty", "读取中…"));
           try {
             const data = await apiJson(`/local_gallery/browse?path=${encodeURIComponent(path || "")}`);
             if (!data.ok) {
               setMsg(data.error || "读取失败");
-              dirList.replaceChildren(el("div", "lgb-empty", data.error || "读取失败"));
+              fileGrid.replaceChildren(el("div", "lgb-empty", data.error || "读取失败"));
               return;
             }
             currentPath = data.path || "";
-            pathInput.value = currentPath;
             if (currentPath) pushRecent(currentPath);
             renderRecentRow();
-            // 清掉「读取中…」占位，否则它会一直留在列表最上面
-            dirList.replaceChildren();
-
-            (data.drives || []).forEach((drive) => {
-              const btn = el("button", "lgb-btn", drive.replace(/[\\/]+$/, ""));
-              btn.addEventListener("click", () => load(drive));
-              drivesRow.append(btn);
-            });
-
-            if (data.parent) {
-              const up = el("div", "lgb-diritem");
-              up.append(el("span", "ico", "↑"), el("span", "", "…"));
-              up.title = data.parent;
-              up.addEventListener("click", () => load(data.parent));
-              dirList.append(up);
-            }
-
-            const dirs = data.dirs || [];
-            if (!dirs.length) dirList.append(el("div", "lgb-empty", "没有子文件夹"));
-            dirs.forEach((dir) => {
-              const row = el("div", "lgb-diritem");
-              row.append(el("span", "ico", "📁"), el("span", "", dir.name));
-              row.title = dir.path;
-              row.addEventListener("click", () => load(dir.path));
-              dirList.append(row);
-            });
+            // 当前路径只做展示（要换目录用「浏览」的系统选择框，或点下面的「最近」）
+            setLabel(pathValue, currentPath || "还没选目录");
+            pathValue.title = currentPath || "";
+            fileGrid.replaceChildren();
 
             const images = data.images || [];
             setTpl(fileTitle, "图片（{n}）", { n: data.image_total || 0 });
@@ -9113,36 +9087,22 @@ app.registerExtension({
             }
           } catch (err) {
             setMsg(`读取失败：${err.message || err}`);
-            dirList.replaceChildren(el("div", "lgb-empty", String(err.message || err)));
+            fileGrid.replaceChildren(el("div", "lgb-empty", String(err.message || err)));
           }
         }
 
         btnClose.addEventListener("click", close);
-        btnGo.addEventListener("click", () => load(pathInput.value.trim()));
-        pathInput.addEventListener("keydown", (evt) => {
-          if (evt.key === "Enter") load(pathInput.value.trim());
-        });
-        btnUp.addEventListener("click", () => {
-          if (!currentPath) return;
-          const trimmed = currentPath.replace(/[\\/]+$/, "");
-          const parts = trimmed.split(/[\\/]/);
-          if (parts.length <= 1) {
-            load("");
-            return;
-          }
-          parts.pop();
-          const next = parts.join("\\");
-          load(next.length <= 2 ? next + "\\" : next);
-        });
         btnUseDir.addEventListener("click", () => {
           if (!currentPath) {
-            setMsg("先在左侧选一个盘符或文件夹");
+            setMsg("先用「浏览」的系统选择框选一个文件夹");
             return;
           }
+          const before = getPaths().length;
           addPaths([currentPath]);
+          const added = getPaths().length > before;
           // 路径列表就在这页，加完刷新一下，不用关窗
           renderPathChips(savedRow, { onChange: () => setMsg("路径列表已更新") });
-          setMsg("已加入：{path}", { path: currentPath });
+          setMsg(added ? "已加入：{path}" : "这个文件夹已经在列表里了", { path: currentPath });
         });
         btnAddPicked.addEventListener("click", () => {
           if (!picked.size) {
