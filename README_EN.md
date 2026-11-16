@@ -57,7 +57,7 @@ Five bands, top to bottom:
 | Area | What's there |
 |---|---|
 | **Tab bar** | `Gallery / Favorites / Prompts / Caption / Convert` (counts live in the tooltip, not on the buttons) plus the "columns" slider |
-| **Path bar** (Gallery / Favorites) | Browse, Settings, ⟳ rescan, Delete prompts, Delete selected, Trash |
+| **Path bar** (Gallery / Favorites) | Browse, Settings, ⟳ rescan, Delete prompts, Delete selected, Trash — on the Favorites tab the two delete buttons are replaced by **Unfavorite (N)** |
 | **Filter row** | Include subfolders, Only with prompt, sort button, search-scope button, search box, `hits / total` |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page) |
 | **Footer** | Single / multi-select toggle, selection count, status text, Select all / Invert / Clear selection / Copy prompts; two floating **Caption / Convert** buttons at the bottom-right jump straight to those tabs |
@@ -120,6 +120,7 @@ Aggregates favorites across folders, independent of the current path list.
 - An image can live in several folders; duplicate names are rejected and names are capped at 40 characters
 - **Bulk add**: select images in Gallery or Favorites → **Add to folder (N)** in the path bar → pick a folder (or create one right there). Images that were not favorited get favorited automatically
 - Right-click a folder chip to delete the category — the images **stay favorited**
+- With images selected on the Favorites tab, the path-bar button becomes **Unfavorite (N)** — they leave the favorites list, files are untouched, and ☆ adds them back
 
 ### Prompts
 

@@ -2913,6 +2913,10 @@ const I18N_EN = {
   "例如 D:\\AI\\output\\compressed": "e.g. D:\\AI\\output\\compressed",
   "收藏这张": "Favorite",
   "取消收藏": "Unfavorite",
+  "取消收藏 ({n})": "Unfavorite ({n})",
+  "已取消收藏 {n} 张": "Removed {n} image(s) from favorites",
+  "取消收藏失败：{err}": "Could not unfavorite: {err}",
+  "把选中的图从收藏里移除（想加回来再点 ☆ 就行）": "Remove the selected images from favorites (click ☆ to add them back)",
   "… 等 {n} 个文件": "… and {n} more files",
   "… 等 {n} 个": "… and {n} more",
   "，{n} 个失败": ", {n} failed",
@@ -3929,7 +3933,11 @@ app.registerExtension({
       const btnFavFolder = el("button", "lgb-btn sm", "加入收藏夹");
       btnFavFolder.style.display = "none";
       setTitle(btnFavFolder, "把选中的图片放进收藏夹（可以顺手新建一个）");
-      bulk.append(btnFavFolder, btnDelPrompts, btnDelSel);
+      // 收藏页专用：取消收藏（替代这边的两个删除按钮）
+      const btnUnfav = el("button", "lgb-btn sm", "取消收藏");
+      btnUnfav.style.display = "none";
+      setTitle(btnUnfav, "把选中的图从收藏里移除（想加回来再点 ☆ 就行）");
+      bulk.append(btnUnfav, btnFavFolder, btnDelPrompts, btnDelSel);
 
       rowAdd.append(
         btnBrowse,
@@ -4329,8 +4337,10 @@ app.registerExtension({
         // 转换页上的「范围」跟着选中数变
         syncConvertPage();
         // 批量删除：图库/收藏按图片选中数，提示词页两档按提示词选中数
+        const onFavorites = activeTab === "favorites";
         const bulkCount = onPrompts ? state.promptSel.size : state.selected.size;
-        btnDelSel.style.display = bulkCount ? "" : "none";
+        // 收藏页不摆删除（那里的批量动作是「取消收藏」）
+        btnDelSel.style.display = !onFavorites && bulkCount ? "" : "none";
         setTpl(btnDelSel, bulkCount ? "删除选中 ({n})" : "删除选中", { n: bulkCount });
         setTitle(
           btnDelSel,
@@ -4339,6 +4349,8 @@ app.registerExtension({
             : "图片 + 同名提示词一起移到回收站（可随时恢复）"
         );
         const favFolderCount = onPrompts ? 0 : state.selected.size;
+        btnUnfav.style.display = onFavorites && favFolderCount ? "" : "none";
+        setTpl(btnUnfav, favFolderCount ? "取消收藏 ({n})" : "取消收藏", { n: favFolderCount });
         btnFavFolder.style.display = favFolderCount ? "" : "none";
         setTpl(btnFavFolder, favFolderCount ? "加入收藏夹 ({n})" : "加入收藏夹", {
           n: favFolderCount,
@@ -4346,8 +4358,8 @@ app.registerExtension({
         const selectedList = [...state.selected.keys()];
         const byPath = new Map(state.items.map((it) => [it.path, it]));
         const promptCount = selectedList.filter((path) => byPath.get(path)?.has_prompt).length;
-        // 提示词页上「删除选中」已经只删提示词，不用再摆一个「删提示词」
-        const showDelPrompts = !onPrompts && promptCount > 0;
+        // 提示词页上「删除选中」已经只删提示词，不用再摆一个「删提示词」；收藏页整组删除都收起来
+        const showDelPrompts = !onPrompts && !onFavorites && promptCount > 0;
         btnDelPrompts.style.display = showDelPrompts ? "" : "none";
         setTpl(btnDelPrompts, promptCount ? "删提示词 ({n})" : "删提示词", { n: promptCount });
         setTitleT(btnDelPrompts, "只移走 {n} 个同名提示词文件，图片保留（可随时恢复）", {
@@ -8184,6 +8196,42 @@ app.registerExtension({
         }
       }
 
+      // 批量取消收藏（收藏页的「取消收藏」按钮）
+      async function unfavoritePaths(paths) {
+        const list = [...new Set((paths || []).filter(Boolean))];
+        if (!list.length) return;
+        try {
+          const data = await apiJson("/local_gallery/favorites", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ paths: list, action: "remove" }),
+          });
+          // 收藏 + 收藏夹数量一次同步（response 里带 items）
+          applyFolderState(data);
+          reloadFolders();
+          const gone = new Set(data.removed || list);
+          list.forEach((path) => {
+            state.selected.delete(path);
+            state.promptCache.delete(path);
+          });
+          renumberSelection();
+          commitSelection();
+          updateTabCounts();
+          if (state.source === "favorites") {
+            // 在收藏页：直接从当前列表摘掉，不用整页重扫
+            state.items = state.items.filter((it) => !gone.has(it.path));
+            state.rendered = 0;
+            renderGrid();
+          }
+          grid.querySelectorAll(".lgb-item").forEach((dom) => {
+            paintFav(dom.querySelector(".lgb-fav"), state.favorites.has(dom.dataset.path));
+          });
+          setStatus("已取消收藏 {n} 张", { vars: { n: list.length } });
+        } catch (err) {
+          setStatus("取消收藏失败：{err}", { error: true, vars: { err: err.message || err } });
+        }
+      }
+
       /* ---------------- 收藏夹（分类） ---------------- */
       // 通用文本输入弹窗：收藏夹命名用
       function openTextPrompt({ title, placeholder = "", value = "", okText = "确定", onOk }) {
@@ -8972,6 +9020,10 @@ app.registerExtension({
       btnFavFolder.addEventListener("click", () => {
         if (!state.selected.size) return;
         openFolderPicker([...state.selected.keys()]);
+      });
+      btnUnfav.addEventListener("click", () => {
+        if (!state.selected.size) return;
+        unfavoritePaths([...state.selected.keys()]);
       });
 
       btnJumpReverse.addEventListener("click", () => switchTab("reverse"));
