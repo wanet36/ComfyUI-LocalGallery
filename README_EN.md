@@ -60,7 +60,7 @@ Five bands, top to bottom:
 | **Path bar** (Gallery / Favorites) | Browse, Settings, ⟳ rescan, Delete prompts, Delete selected, Trash — on the Favorites tab the two delete buttons are replaced by **Unfavorite (N)** |
 | **Filter row** | Include subfolders, Only with prompt, sort button, search-scope button, search box, `hits / total` |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page) |
-| **Footer** | Single / multi-select toggle, selection count, status text, Select all / Invert / Clear selection / Copy prompts; two floating **Caption / Convert** buttons at the bottom-right jump straight to those tabs |
+| **Footer** | Single / multi-select toggle, selection count, status text, **Caption / Convert** shortcuts (left of **Select all**; the active tab is highlighted), Select all / Invert / Clear selection / Copy prompts |
 
 ### Adding paths
 

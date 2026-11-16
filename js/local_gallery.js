@@ -545,24 +545,6 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   font-size: 11px;
 }
 
-/* 右下角快捷跳转：反推 / 转换 */
-.lgb-quickjump {
-  position: absolute;
-  right: 10px;
-  bottom: 44px;
-  z-index: 7;
-  display: flex;
-  gap: 6px;
-  pointer-events: none; /* 空隙不挡下面的缩略图 */
-}
-.lgb-quickjump .lgb-btn {
-  pointer-events: auto;
-  box-shadow: var(--lg-shadow-1);
-}
-.lgb-quickjump .lgb-btn:hover {
-  box-shadow: var(--lg-shadow-2);
-}
-
 /* 排序浮层：左栏选依据，右栏选方向 */
 .lgb-sortmenu {
   position: fixed;
@@ -1243,6 +1225,13 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   flex: 0 0 auto;
   background: var(--lg-elev);
   border-top: 1px solid var(--lg-line);
+  /* 面板拖得很窄时按钮放不下，允许横向滚动，别把内容顶出可视区 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.lgb-foot::-webkit-scrollbar {
+  height: 4px;
 }
 .lgb-selpill {
   flex: 0 0 auto;
@@ -1257,6 +1246,13 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
 }
 .lgb-selpill.on {
   background: var(--lg-accent-soft);
+  color: var(--lg-accent);
+  font-weight: 600;
+}
+/* 底栏里「反推 / 转换」处于当前页时高亮 */
+:is(.lgb-wrap, .lgb-overlay) .lgb-foot .lgb-btn.on {
+  background: var(--lg-accent-soft);
+  border-color: var(--lg-accent);
   color: var(--lg-accent);
   font-weight: 600;
 }
@@ -4048,7 +4044,22 @@ app.registerExtension({
       const btnInvert = el("button", "lgb-btn sm", "反选");
       const btnNone = el("button", "lgb-btn sm", "清空选择");
       const btnCopy = el("button", "lgb-btn sm", "复制提示词");
-      rowFoot.append(btnMode, selLabel, statusLabel, btnAll, btnInvert, btnNone, btnCopy);
+      // 反推 / 转换快捷入口，放在「全选」左边
+      const btnJumpReverse = el("button", "lgb-btn sm", "反推");
+      setTitle(btnJumpReverse, "跳到反推页：对选中的图跑 WD14 / TIPO");
+      const btnJumpConvert = el("button", "lgb-btn sm", "转换");
+      setTitle(btnJumpConvert, "跳到转换压缩页：批量转格式 / 压体积 / 缩放");
+      rowFoot.append(
+        btnMode,
+        selLabel,
+        statusLabel,
+        btnJumpReverse,
+        btnJumpConvert,
+        btnAll,
+        btnInvert,
+        btnNone,
+        btnCopy
+      );
 
       /* 单选 / 多选切换：模式存本地，切到单选时把多余的选中项裁掉 */
       btnMode.addEventListener("click", () => {
@@ -4070,14 +4081,6 @@ app.registerExtension({
 
       syncPickMode();
 
-      // 右下角快捷入口：反推 / 转换（这两个页签上不再显示数量）
-      const quickJump = el("div", "lgb-quickjump");
-      const btnJumpReverse = el("button", "lgb-btn sm", "反推");
-      setTitle(btnJumpReverse, "跳到反推页：对选中的图跑 WD14 / TIPO");
-      const btnJumpConvert = el("button", "lgb-btn sm", "转换");
-      setTitle(btnJumpConvert, "跳到转换压缩页：批量转格式 / 压体积 / 缩放");
-      quickJump.append(btnJumpReverse, btnJumpConvert);
-
       wrap.append(
         head,
         rowAdd,
@@ -4086,7 +4089,6 @@ app.registerExtension({
         pagePrompts,
         pageReverse,
         pageConvert,
-        quickJump,
         rowFoot
       );
 
@@ -5257,8 +5259,9 @@ app.registerExtension({
         // 路径栏（浏览 / 设置 / 刷新 / 回收站）只在能看图的两个页签出现；
         // 提示词页把整块批量删除挪进提示词栏，那里也有一颗「删除选中」
         rowAdd.style.display = isGridView ? "" : "none";
-        // 已经在反推/转换页时不用再摆快捷入口
-        quickJump.style.display = isReverse || isConvert ? "none" : "";
+        // 底栏这两个按钮兼做「当前在哪页」的指示
+        btnJumpReverse.classList.toggle("on", isReverse);
+        btnJumpConvert.classList.toggle("on", isConvert);
         if (isPrompts) promptBar.append(bulk);
         else if (isGridView) rowAdd.insertBefore(bulk, btnTrash);
         hideTip();
