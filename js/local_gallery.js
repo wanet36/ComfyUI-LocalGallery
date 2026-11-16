@@ -35,7 +35,8 @@ const CSS = `
 /* 令牌定义在面板根节点 + 浮层（浮层挂在 body 上，需要自己带一份） */
 .lgb-wrap,
 .lgb-tip,
-.lgb-overlay {
+.lgb-overlay,
+.lgb-sortmenu {
   --lg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
   --lg-mono: "SFMono-Regular", "Cascadia Mono", Consolas, "Liberation Mono", monospace;
@@ -80,7 +81,8 @@ const CSS = `
 /* 亮色主题：只换令牌，组件样式完全复用 */
 .lgb-wrap[data-theme="light"],
 .lgb-tip[data-theme="light"],
-.lgb-overlay[data-theme="light"] {
+.lgb-overlay[data-theme="light"],
+.lgb-sortmenu[data-theme="light"] {
   --lg-bg: #f6f7f9;
   --lg-elev: #ffffff;
   --lg-sunken: #eceef2;
@@ -539,6 +541,87 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
 }
 .lgb-folderrow .n {
   color: var(--lg-text-3);
+  font-size: 11px;
+}
+
+/* 排序浮层：左栏选依据，右栏选方向 */
+.lgb-sortmenu {
+  position: fixed;
+  z-index: 70;
+  display: flex;
+  gap: 4px;
+  padding: 8px;
+  background: var(--lg-elev);
+  border: 1px solid var(--lg-line);
+  border-radius: var(--lg-r);
+  box-shadow: var(--lg-shadow-2);
+}
+.lgb-sortmenu .lgb-sortcol {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 96px;
+}
+.lgb-sortmenu .cap {
+  padding: 2px 8px 5px;
+  font-size: 10px;
+  color: var(--lg-text-3);
+  white-space: nowrap;
+}
+.lgb-sortmenu .lgb-sortsplit {
+  width: 1px;
+  margin: 2px 2px;
+  background: var(--lg-line);
+}
+.lgb-sortmenu .opt {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--lg-r-sm);
+  background: transparent;
+  color: var(--lg-text-2);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--lg-dur), color var(--lg-dur);
+}
+.lgb-sortmenu .opt:hover {
+  background: var(--lg-hover);
+  color: var(--lg-text);
+}
+.lgb-sortmenu .opt.on {
+  background: var(--lg-accent-soft);
+  color: var(--lg-text);
+  box-shadow: inset 0 0 0 1px var(--lg-accent-line);
+}
+.lgb-sortmenu .opt[disabled] {
+  opacity: 0.42;
+  cursor: default;
+}
+.lgb-sortmenu .opt[disabled]:hover {
+  background: transparent;
+  color: var(--lg-text-2);
+}
+.lgb-sortbtn .caret {
+  margin-left: 4px;
+  font-size: 9px;
+  opacity: 0.65;
+  transition: transform var(--lg-dur);
+}
+.lgb-sortbtn.open .caret {
+  transform: rotate(180deg);
+  opacity: 1;
+}
+.lgb-sortmenu {
+  font-family: var(--lg-font);
+}
+.lgb-sortmenu .opt .tick {
+  margin-left: auto;
+  color: var(--lg-accent);
   font-size: 11px;
 }
 
@@ -2848,6 +2931,21 @@ const I18N_EN = {
   "搜索范围：名称 → 提示词 → 全部（点一下切一个）": "Search scope: name → prompt → all (click to cycle)",
   "排序：默认 → 文件名 ↑ → 文件名 ↓ → 时间（新→旧） → 时间（旧→新）": "Sort: default → name ↑ → name ↓ → newest first → oldest first",
   "默认": "Default",
+  "排序依据": "Sort by",
+  "方向": "Direction",
+  "时间": "Time",
+  "扫描顺序": "Scan order",
+  "顺序": "Ascending",
+  "倒序": "Descending",
+  "按文件名排序": "Sort by file name",
+  "按文件修改时间排序": "Sort by modified time",
+  "回到扫描时的原始顺序": "Back to the original scan order",
+  "从小到大 / 从旧到新": "A→Z / oldest first",
+  "从大到小 / 从新到旧": "Z→A / newest first",
+  "排序：点开选「名称 / 时间」和「顺序 / 倒序」": "Sort: pick name/time and ascending/descending",
+  "扫描顺序（目录里的原始顺序）": "Scan order (as found on disk)",
+  "文件名从小到大（数字按数值比，2 在 10 前面）": "File name A→Z (numbers by value: 2 before 10)",
+  "文件名从大到小": "File name Z→A",
   "名称 ↑": "Name ↑",
   "名称 ↓": "Name ↓",
   "时间 ↓": "Time ↓",
@@ -3846,8 +3944,10 @@ app.registerExtension({
       setPh(searchInput, "按文件名过滤（空格分隔多个关键词）");
       searchBox.append(searchModeBtn, searchInput);
       // 排序：默认 / 文件名 ↑↓ / 修改时间 ↑↓，点一下切一个
-      const sortModeBtn = el("button", "lgb-mode", "默认");
-      setTitle(sortModeBtn, "排序：默认 → 文件名 ↑ → 文件名 ↓ → 时间（新→旧） → 时间（旧→新）");
+      const sortModeBtn = el("button", "lgb-mode lgb-sortbtn");
+      const sortLabel = el("span", "", "默认");
+      sortModeBtn.append(sortLabel, el("span", "caret", "▾"));
+      setTitle(sortModeBtn, "排序：点开选「名称 / 时间」和「顺序 / 倒序」");
       const countLabel = el("span", "lgb-count", "—");
       filters.append(
         recursiveChk.label,
@@ -5063,6 +5163,7 @@ app.registerExtension({
         if (langSegSync) langSegSync();
         applyLangNodes();
         applySearchMode(state.searchMode, { persist: false });
+        closeSortMenu();
         applySortMode(state.sortMode, { persist: false, rerender: false });
         updateTabCounts();
         paintSelection();
@@ -7733,11 +7834,22 @@ app.registerExtension({
 
       /* ---------------- 排序（默认 / 文件名 / 修改时间，各带正反） ---------------- */
       const SORT_MODES = [
-        { key: "default", label: "默认", hint: "排序：扫描顺序（点一下切一个）" },
-        { key: "name-asc", label: "名称 ↑", hint: "按文件名从小到大（数字按数值比，2 在 10 前面）" },
-        { key: "name-desc", label: "名称 ↓", hint: "按文件名从大到小" },
+        { key: "default", label: "默认", hint: "扫描顺序（目录里的原始顺序）" },
+        { key: "name-asc", label: "名称 ↑", hint: "文件名从小到大（数字按数值比，2 在 10 前面）" },
+        { key: "name-desc", label: "名称 ↓", hint: "文件名从大到小" },
         { key: "time-desc", label: "时间 ↓", hint: "按修改时间，从新到旧" },
         { key: "time-asc", label: "时间 ↑", hint: "按修改时间，从旧到新" },
+      ];
+
+      // 浮层两栏用的选项
+      const SORT_FIELDS = [
+        { key: "name", label: "名称", hint: "按文件名排序" },
+        { key: "time", label: "时间", hint: "按文件修改时间排序" },
+        { key: "default", label: "扫描顺序", hint: "回到扫描时的原始顺序" },
+      ];
+      const SORT_DIRS = [
+        { key: "asc", label: "顺序", hint: "从小到大 / 从旧到新" },
+        { key: "desc", label: "倒序", hint: "从大到小 / 从新到旧" },
       ];
 
       const SORT_KEY = "localGalleryBrowser.sort";
@@ -7770,7 +7882,7 @@ app.registerExtension({
       function applySortMode(key, { persist = true, rerender = true } = {}) {
         const mode = SORT_MODES.find((m) => m.key === key) || SORT_MODES[0];
         state.sortMode = mode.key;
-        setTpl(sortModeBtn, mode.label);
+        setTpl(sortLabel, mode.label);
         setTitle(sortModeBtn, mode.hint);
         sortModeBtn.classList.toggle("primary", mode.key !== "default");
         if (persist) {
@@ -7790,6 +7902,105 @@ app.registerExtension({
           if (promptMode === "orphans") renderOrphans({ reset: true });
           else renderPrompts({ reset: true });
         }
+      }
+
+      // 排序浮层：一栏选依据（名称 / 时间 / 扫描顺序），一栏选方向（顺序 / 倒序）
+      let sortMenuEl = null;
+      let sortMenuOff = null;
+
+      function closeSortMenu() {
+        if (sortMenuOff) {
+          sortMenuOff();
+          sortMenuOff = null;
+        }
+        if (sortMenuEl) {
+          sortMenuEl.remove();
+          sortMenuEl = null;
+        }
+        sortModeBtn.classList.remove("open");
+      }
+
+      function currentSortField() {
+        if (state.sortMode === "default") return "default";
+        return state.sortMode.startsWith("time") ? "time" : "name";
+      }
+
+      function currentSortDir() {
+        return state.sortMode.endsWith("desc") ? "desc" : "asc";
+      }
+
+      function openSortMenu() {
+        if (sortMenuEl) {
+          closeSortMenu();
+          return;
+        }
+        const panel = el("div", "lgb-sortmenu");
+        panel.dataset.theme = wrap.dataset.theme || "dark";
+        const field = currentSortField();
+        const dir = currentSortDir();
+        const noDir = field === "default";
+
+        function choose(fieldKey, dirKey) {
+          const nextField = fieldKey || currentSortField();
+          const nextDir = dirKey || currentSortDir();
+          const next = nextField === "default" ? "default" : `${nextField}-${nextDir}`;
+          closeSortMenu();
+          applySortMode(next);
+        }
+
+        const colA = el("div", "lgb-sortcol");
+        colA.append(el("div", "cap", "排序依据"));
+        SORT_FIELDS.forEach((f) => {
+          const btn = el("button", "opt");
+          btn.append(tspan(f.label));
+          if (field === f.key) {
+            btn.classList.add("on");
+            btn.append(el("span", "tick", "✓"));
+          }
+          setTitle(btn, f.hint);
+          btn.addEventListener("click", () => choose(f.key, null));
+          colA.append(btn);
+        });
+
+        const colB = el("div", "lgb-sortcol");
+        colB.append(el("div", "cap", "方向"));
+        SORT_DIRS.forEach((d) => {
+          const btn = el("button", "opt");
+          btn.append(tspan(d.label));
+          if (!noDir && dir === d.key) {
+            btn.classList.add("on");
+            btn.append(el("span", "tick", "✓"));
+          }
+          if (noDir) btn.disabled = true; // 扫描顺序没有正反
+          setTitle(btn, d.hint);
+          btn.addEventListener("click", () => choose(null, d.key));
+          colB.append(btn);
+        });
+
+        panel.append(colA, el("div", "lgb-sortsplit"), colB);
+        document.body.appendChild(panel);
+
+        // 贴在按钮下方；右边放不下就右对齐
+        const rect = sortModeBtn.getBoundingClientRect();
+        const left = Math.max(8, Math.min(rect.left, window.innerWidth - panel.offsetWidth - 8));
+        panel.style.left = `${left}px`;
+        panel.style.top = `${rect.bottom + 6}px`;
+        sortModeBtn.classList.add("open");
+
+        const onDown = (evt) => {
+          if (panel.contains(evt.target) || sortModeBtn.contains(evt.target)) return;
+          closeSortMenu();
+        };
+        const onKey = (evt) => {
+          if (evt.key === "Escape") closeSortMenu();
+        };
+        document.addEventListener("pointerdown", onDown, true);
+        window.addEventListener("keydown", onKey);
+        sortMenuOff = () => {
+          document.removeEventListener("pointerdown", onDown, true);
+          window.removeEventListener("keydown", onKey);
+        };
+        sortMenuEl = panel;
       }
 
       function refreshViews() {
@@ -8751,10 +8962,7 @@ app.registerExtension({
         applySearchMode(SEARCH_MODES[(idx + 1) % SEARCH_MODES.length].key);
         runSearch();
       });
-      sortModeBtn.addEventListener("click", () => {
-        const idx = SORT_MODES.findIndex((m) => m.key === state.sortMode);
-        applySortMode(SORT_MODES[(idx + 1) % SORT_MODES.length].key);
-      });
+      sortModeBtn.addEventListener("click", () => openSortMenu());
       btnPromptCopyAll.addEventListener("click", async () => {
         const all = promptItems();
         if (!all.length) {
