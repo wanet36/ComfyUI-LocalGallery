@@ -1008,9 +1008,13 @@ def _legacy_items(batch: Path) -> list[dict]:
     return list(groups.values())
 
 
-def trash_images(paths: list[str], batch_name: str | None = None) -> dict:
-    """把图片及其同名提示词文件移到回收站。
+def trash_images(
+    paths: list[str], batch_name: str | None = None, with_prompts: bool = True
+) -> dict:
+    """把图片移到回收站。
 
+    - `with_prompts=True`（默认）：连同同名提示词文件一起移走
+    - `with_prompts=False`：只移图片，提示词文件留在原地（宁可变孤儿也别丢）
     只接受图片文件；目录、非图片、allowed_roots 外的路径一律拒绝。
     """
     config = load_config()
@@ -1070,8 +1074,8 @@ def trash_images(paths: list[str], batch_name: str | None = None) -> dict:
             "sidecars": [],
         }
 
-        # 同名提示词文件一起移走，否则会留下孤儿 txt
-        for ext in sidecars:
+        # 同名提示词文件一起移走，否则会留下孤儿 txt；只删图片时跳过
+        for ext in sidecars if with_prompts else []:
             side = src.with_suffix(ext)
             if not side.is_file():
                 continue

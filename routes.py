@@ -310,9 +310,15 @@ def register_routes() -> bool:
             return _deny("一次最多删除 500 个文件")
 
         cleaned = [str(p).strip() for p in paths if str(p or "").strip()]
+        # with_prompts=false 时只移图片，同名提示词文件留在原地
+        with_prompts = payload.get("with_prompts", True) if isinstance(payload, dict) else True
+        if isinstance(with_prompts, str):
+            with_prompts = with_prompts.strip().lower() not in ("0", "false", "no")
         loop = asyncio.get_running_loop()
         try:
-            result = await loop.run_in_executor(None, trash_images, cleaned)
+            result = await loop.run_in_executor(
+                None, lambda: trash_images(cleaned, with_prompts=bool(with_prompts))
+            )
         except Exception as exc:
             logger.exception("[LocalGallery] 删除失败")
             return _deny(f"删除失败：{exc}", 500)

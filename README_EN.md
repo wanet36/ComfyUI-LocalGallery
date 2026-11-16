@@ -57,10 +57,10 @@ Five bands, top to bottom:
 | Area | What's there |
 |---|---|
 | **Tab bar** | `Gallery / Favorites / Prompts / Caption / Convert` (counts live in the tooltip, not on the buttons) plus the "columns" slider |
-| **Path bar** (Gallery / Favorites) | Browse, Settings, ⟳ rescan, Delete prompts, Delete selected, Trash — on the Favorites tab the two delete buttons are replaced by **Unfavorite (N)** |
+| **Path bar** (Gallery / Favorites) | Browse, Settings, ⟳ rescan, the batch group (`Delete selected ▾` / `Select all` / `Clear selection`; on Favorites it becomes `Unfavorite (N)` + `Add to folder (N)`), Trash |
 | **Filter row** | Include subfolders, Only with prompt, sort button, search-scope button, search box, `hits / total` |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page) |
-| **Footer** | Single / multi-select toggle, selection count, status text, **Caption / Convert** shortcuts (left of **Select all**; the active tab is highlighted), Select all / Invert / Clear selection / Copy prompts |
+| **Footer** | Single / multi-select toggle, selection count, status text, **Caption / Convert** shortcuts (the active tab is highlighted), Copy prompts |
 
 ### Adding paths
 
@@ -98,6 +98,14 @@ Paths can be folders, single images, or a mix. The same file reached through sev
 ### Gallery
 
 Default tab. Filtering, searching, selecting and bulk delete live here — its path bar (and the bulk delete buttons in it) is shared with the Favorites tab.
+
+Once images are selected, **`Delete selected ▾`** in the path bar offers three options (all go to the Trash, restorable):
+
+| Option | What it does |
+|---|---|
+| `Delete both (image + prompt)` | Moves the image and its prompt file together |
+| `Delete prompts (N)` | Moves only the prompt files, images stay (greyed out when nothing selected has a prompt) |
+| `Delete images (keep prompts)` | Moves only the images, prompt files stay behind (they become "orphan prompts") |
 
 The **search scope** button cycles through three modes (remembered):
 

@@ -168,6 +168,14 @@ const CSS = `
   flex: 0 0 auto;
   min-width: 0;
 }
+.lgb-bar {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.lgb-bar::-webkit-scrollbar {
+  height: 4px;
+}
 
 /* ============================================================ 顶部栏 */
 .lgb-head {
@@ -545,6 +553,24 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   font-size: 11px;
 }
 
+/* 「删除选中」下拉菜单 */
+.lgb-delmenu .lgb-sortcol {
+  min-width: 210px;
+}
+.lgb-delmenu .opt {
+  height: 30px;
+}
+.lgb-delmenu .opt.danger {
+  color: var(--lg-danger);
+}
+.lgb-delmenu .opt.danger:hover {
+  background: var(--lg-danger-soft);
+  color: var(--lg-danger);
+}
+.lgb-delmenu .opt[disabled] {
+  opacity: 0.45;
+}
+
 /* 排序浮层：左栏选依据，右栏选方向 */
 .lgb-sortmenu {
   position: fixed;
@@ -607,13 +633,15 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   background: transparent;
   color: var(--lg-text-2);
 }
-.lgb-sortbtn .caret {
+.lgb-sortbtn .caret,
+.lgb-delbtn .caret {
   margin-left: 4px;
   font-size: 9px;
   opacity: 0.65;
   transition: transform var(--lg-dur);
 }
-.lgb-sortbtn.open .caret {
+.lgb-sortbtn.open .caret,
+.lgb-delbtn.open .caret {
   transform: rotate(180deg);
   opacity: 1;
 }
@@ -2992,6 +3020,19 @@ const I18N_EN = {
   "已复制这张的提示词": "Prompt copied",
   "删提示词": "Delete prompts",
   "删除选中": "Delete selected",
+  "点开选择：图片 + 提示词一起删 / 只删提示词 / 只删图片": "Open the menu: images + prompts / prompts only / images only",
+  "删除全部（图片 + 提示词）": "Delete both (image + prompt)",
+  "把选中的图片连同同名提示词一起移到回收站": "Move the images and their prompts to the Trash",
+  "删除提示词（{n} 个）": "Delete prompts ({n})",
+  "删除提示词（没有同名提示词）": "Delete prompts (none found)",
+  "只移走同名提示词文件，图片保留": "Move only the prompt files, keep the images",
+  "删除图片（提示词保留）": "Delete images (keep prompts)",
+  "只移走图片，同名提示词文件留在原地": "Move only the images, leave the prompt files in place",
+  "只把图片移到回收站（不是永久删除），同名提示词文件留在原地。": "Only the images move to the Trash (not a permanent delete); prompt files stay where they are.",
+  "删除 {n} 张图片？": "Delete {n} image(s)?",
+  "删除图片（{n}）": "Delete images ({n})",
+  "把当前列表里的图全部选中": "Select every image in the current list",
+  "取消全部选中": "Clear the selection",
 
   // 空状态 / 提示
   "这个文件夹里没有图片": "No images in this folder",
@@ -3917,23 +3958,26 @@ app.registerExtension({
       btnTrash.append(icon("recycle", 14), tspan("回收站"));
       setTitle(btnTrash, "查看被删除的图片和提示词，可随时恢复");
 
-      /* 选中之后的两个批量删除：从底栏挪到回收站左边（不占底栏位置）。
-         只做一套按钮，切到提示词页时整块挪进提示词栏，避免两处状态各说各话 */
+      /* 批量操作区：放在回收站左边。只做一套按钮，切到提示词页时整块挪进提示词栏 */
       const bulk = el("div", "lgb-bulk");
-      const btnDelPrompts = el("button", "lgb-btn sm warn", "删提示词");
-      btnDelPrompts.style.display = "none";
-      setTitle(btnDelPrompts, "只把同名提示词文件移到回收站，图片保留（可随时恢复）");
-      const btnDelSel = el("button", "lgb-btn sm warn", "删除选中");
-      btnDelSel.style.display = "none";
-      setTitle(btnDelSel, "图片 + 同名提示词一起移到回收站（可随时恢复）");
-      const btnFavFolder = el("button", "lgb-btn sm", "加入收藏夹");
-      btnFavFolder.style.display = "none";
-      setTitle(btnFavFolder, "把选中的图片放进收藏夹（可以顺手新建一个）");
-      // 收藏页专用：取消收藏（替代这边的两个删除按钮）
+      // 收藏页专用：取消收藏
       const btnUnfav = el("button", "lgb-btn sm", "取消收藏");
       btnUnfav.style.display = "none";
       setTitle(btnUnfav, "把选中的图从收藏里移除（想加回来再点 ☆ 就行）");
-      bulk.append(btnUnfav, btnFavFolder, btnDelPrompts, btnDelSel);
+      const btnFavFolder = el("button", "lgb-btn sm", "加入收藏夹");
+      btnFavFolder.style.display = "none";
+      setTitle(btnFavFolder, "把选中的图片放进收藏夹（可以顺手新建一个）");
+      // 删除选中：点开选「全部 / 只删提示词 / 只删图片」
+      const btnDelSel = el("button", "lgb-btn sm warn lgb-delbtn");
+      btnDelSel.style.display = "none";
+      const delSelLabel = el("span", "", "删除选中");
+      btnDelSel.append(delSelLabel);
+      setTitle(btnDelSel, "点开选择：图片 + 提示词一起删 / 只删提示词 / 只删图片");
+      const btnAll = el("button", "lgb-btn sm", "全选");
+      setTitle(btnAll, "把当前列表里的图全部选中");
+      const btnNone = el("button", "lgb-btn sm", "清空选择");
+      setTitle(btnNone, "取消全部选中");
+      bulk.append(btnUnfav, btnFavFolder, btnDelSel, btnAll, btnNone);
 
       rowAdd.append(
         btnBrowse,
@@ -4040,9 +4084,6 @@ app.registerExtension({
       const selLabel = el("span", "lgb-selpill", "已选 0");
       const statusLabel = el("span", "lgb-status", "悬停缩略图可预览提示词");
       statusLabel.dataset.i18nStatus = "悬停缩略图可预览提示词";
-      const btnAll = el("button", "lgb-btn sm", "全选");
-      const btnInvert = el("button", "lgb-btn sm", "反选");
-      const btnNone = el("button", "lgb-btn sm", "清空选择");
       const btnCopy = el("button", "lgb-btn sm", "复制提示词");
       // 反推 / 转换快捷入口，放在「全选」左边
       const btnJumpReverse = el("button", "lgb-btn sm", "反推");
@@ -4055,9 +4096,6 @@ app.registerExtension({
         statusLabel,
         btnJumpReverse,
         btnJumpConvert,
-        btnAll,
-        btnInvert,
-        btnNone,
         btnCopy
       );
 
@@ -4279,9 +4317,8 @@ app.registerExtension({
             ? "当前：单选。点一下只保留这一张，再点同一张取消选中。点击切到多选"
             : "当前：多选。点一下加选、再点取消，Shift 连选。点击切到单选"
         );
-        // 全选 / 反选一次会选多张，单选下没有意义
+        // 全选一次会选多张，单选下没有意义
         btnAll.disabled = single;
-        btnInvert.disabled = single;
       }
 
       function toggleSelect(path, index, { range = false, exclusive = false } = {}) {
@@ -4343,12 +4380,12 @@ app.registerExtension({
         const bulkCount = onPrompts ? state.promptSel.size : state.selected.size;
         // 收藏页不摆删除（那里的批量动作是「取消收藏」）
         btnDelSel.style.display = !onFavorites && bulkCount ? "" : "none";
-        setTpl(btnDelSel, bulkCount ? "删除选中 ({n})" : "删除选中", { n: bulkCount });
+        setTpl(delSelLabel, bulkCount ? "删除选中 ({n})" : "删除选中", { n: bulkCount });
         setTitle(
           btnDelSel,
           onPrompts
             ? "把选中的提示词文件移到回收站，图片保留（可随时恢复）"
-            : "图片 + 同名提示词一起移到回收站（可随时恢复）"
+            : "点开选择：图片 + 提示词一起删 / 只删提示词 / 只删图片"
         );
         const favFolderCount = onPrompts ? 0 : state.selected.size;
         btnUnfav.style.display = onFavorites && favFolderCount ? "" : "none";
@@ -4356,16 +4393,6 @@ app.registerExtension({
         btnFavFolder.style.display = favFolderCount ? "" : "none";
         setTpl(btnFavFolder, favFolderCount ? "加入收藏夹 ({n})" : "加入收藏夹", {
           n: favFolderCount,
-        });
-        const selectedList = [...state.selected.keys()];
-        const byPath = new Map(state.items.map((it) => [it.path, it]));
-        const promptCount = selectedList.filter((path) => byPath.get(path)?.has_prompt).length;
-        // 提示词页上「删除选中」已经只删提示词，不用再摆一个「删提示词」；收藏页整组删除都收起来
-        const showDelPrompts = !onPrompts && !onFavorites && promptCount > 0;
-        btnDelPrompts.style.display = showDelPrompts ? "" : "none";
-        setTpl(btnDelPrompts, promptCount ? "删提示词 ({n})" : "删提示词", { n: promptCount });
-        setTitleT(btnDelPrompts, "只移走 {n} 个同名提示词文件，图片保留（可随时恢复）", {
-          n: promptCount,
         });
         updateTabCounts();
         // 正在看反推页时，改了选中就跟着换列表（跑任务中不打断）
@@ -5703,27 +5730,116 @@ app.registerExtension({
         return String(path || "").split(/[\\/]/).pop() || String(path || "");
       }
 
-      async function deletePaths(paths, { onRemoved } = {}) {
+      // 「删除选中」下拉：全部 / 只删提示词 / 只删图片
+      let delMenuEl = null;
+      let delMenuOff = null;
+
+      function closeDeleteMenu() {
+        if (delMenuOff) {
+          delMenuOff();
+          delMenuOff = null;
+        }
+        if (delMenuEl) {
+          delMenuEl.remove();
+          delMenuEl = null;
+        }
+        btnDelSel.classList.remove("open");
+      }
+
+      function openDeleteMenu() {
+        if (delMenuEl) {
+          closeDeleteMenu();
+          return;
+        }
+        const paths = [...state.selected.keys()];
+        if (!paths.length) return;
+        const byPath = new Map(state.items.map((it) => [it.path, it]));
+        const promptCount = paths.filter((path) => byPath.get(path)?.has_prompt).length;
+
+        const panel = el("div", "lgb-sortmenu lgb-delmenu");
+        panel.dataset.theme = wrap.dataset.theme || "dark";
+        const col = el("div", "lgb-sortcol");
+
+        const mk = (label, hint, { danger = false, disabled = false, vars = null } = {}, run) => {
+          const btn = el("button", `opt${danger ? " danger" : ""}`);
+          setTpl(btn, label, vars);
+          setTitle(btn, hint);
+          if (disabled) btn.disabled = true;
+          else
+            btn.addEventListener("click", () => {
+              closeDeleteMenu();
+              run();
+            });
+          col.append(btn);
+        };
+
+        mk(
+          "删除全部（图片 + 提示词）",
+          "把选中的图片连同同名提示词一起移到回收站",
+          { danger: true },
+          () => deletePaths(paths)
+        );
+        mk(
+          promptCount ? "删除提示词（{n} 个）" : "删除提示词（没有同名提示词）",
+          "只移走同名提示词文件，图片保留",
+          { disabled: !promptCount, vars: promptCount ? { n: promptCount } : null },
+          () => deletePrompts(paths)
+        );
+        mk(
+          "删除图片（提示词保留）",
+          "只移走图片，同名提示词文件留在原地",
+          { danger: true },
+          () => deletePaths(paths, { withPrompts: false })
+        );
+
+        panel.append(col);
+        document.body.appendChild(panel);
+
+        const rect = btnDelSel.getBoundingClientRect();
+        const left = Math.max(8, Math.min(rect.left, window.innerWidth - panel.offsetWidth - 8));
+        panel.style.left = `${left}px`;
+        panel.style.top = `${rect.bottom + 6}px`;
+        btnDelSel.classList.add("open");
+
+        const onDown = (evt) => {
+          if (panel.contains(evt.target) || btnDelSel.contains(evt.target)) return;
+          closeDeleteMenu();
+        };
+        const onKey = (evt) => {
+          if (evt.key === "Escape") closeDeleteMenu();
+        };
+        document.addEventListener("pointerdown", onDown, true);
+        window.addEventListener("keydown", onKey);
+        delMenuOff = () => {
+          document.removeEventListener("pointerdown", onDown, true);
+          window.removeEventListener("keydown", onKey);
+        };
+        delMenuEl = panel;
+      }
+
+      async function deletePaths(paths, { onRemoved, withPrompts = true } = {}) {
         const list = [...new Set(paths.filter(Boolean))];
         if (!list.length) return;
         if (!deleteAllowed()) return;
         const preview = list.slice(0, 12).map((p) => "  " + shortName(p)).join("\n");
         const more = list.length > 12 ? "\n  " + t("… 等 {n} 个文件", { n: list.length }) : "";
         openConfirm({
-          title: "删除 {n} 个文件？",
+          title: withPrompts ? "删除 {n} 个文件？" : "删除 {n} 张图片？",
           titleVars: { n: list.length },
           body:
-            t("这些文件会被【移到回收站】（不是永久删除），连同同名提示词文件一起移走。") +
+            (withPrompts
+              ? t("这些文件会被【移到回收站】（不是永久删除），连同同名提示词文件一起移走。")
+              : t("只把图片移到回收站（不是永久删除），同名提示词文件留在原地。")) +
             "\n" +
             t("需要恢复时，把回收站里的文件移回原目录即可。") +
             `\n\n${preview}${more}`,
-          okText: "移到回收站（{n}）",
+          okText: withPrompts ? "移到回收站（{n}）" : "删除图片（{n}）",
           okVars: { n: list.length },
           onOk: async () => {
             const data = await apiJson("/local_gallery/delete", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ paths: list }),
+              body: JSON.stringify({ paths: list, with_prompts: withPrompts }),
             });
             const moved = (data.moved || []).map((m) => m.path);
             const failed = data.failed || [];
@@ -9014,11 +9130,7 @@ app.registerExtension({
           return;
         }
         if (!state.selected.size) return;
-        deletePaths([...state.selected.keys()]);
-      });
-      btnDelPrompts.addEventListener("click", () => {
-        if (!state.selected.size) return;
-        deletePrompts([...state.selected.keys()]);
+        openDeleteMenu();
       });
       btnFavFolder.addEventListener("click", () => {
         if (!state.selected.size) return;
@@ -9102,34 +9214,6 @@ app.registerExtension({
         }
         state.selected.clear();
         visibleItems().forEach((item, index) => state.selected.set(item.path, index));
-        commitSelection();
-        paintSelection();
-      });
-      btnInvert.addEventListener("click", () => {
-        if (onPromptsTab()) {
-          const previous = new Set(state.promptSel.keys());
-          state.promptSel.clear();
-          let order = 0;
-          activePromptList().forEach((item) => {
-            if (!previous.has(item.path)) {
-              state.promptSel.set(item.path, order);
-              order += 1;
-            }
-          });
-          state.promptLast = -1;
-          commitSelection();
-          paintSelection();
-          return;
-        }
-        const previous = new Set(state.selected.keys());
-        state.selected.clear();
-        let order = 0;
-        visibleItems().forEach((item) => {
-          if (!previous.has(item.path)) {
-            state.selected.set(item.path, order);
-            order += 1;
-          }
-        });
         commitSelection();
         paintSelection();
       });
