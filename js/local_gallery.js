@@ -4152,7 +4152,8 @@ app.registerExtension({
       }
 
       function renderChips() {
-        const isFav = state.source === "favorites";
+        // 只在「收藏」页显示收藏夹栏；反推 / 转换 / 提示词页都不该占这行
+        const isFav = state.source === "favorites" && activeTab === "favorites";
         chips.style.display = isFav ? "" : "none";
         chips.replaceChildren();
         if (!isFav) return;
@@ -5286,6 +5287,8 @@ app.registerExtension({
         // 路径栏（浏览 / 设置 / 刷新 / 回收站）只在能看图的两个页签出现；
         // 提示词页把整块批量删除挪进提示词栏，那里也有一颗「删除选中」
         rowAdd.style.display = isGridView ? "" : "none";
+        // 收藏夹栏跟着页签走（不在收藏页就收起）
+        renderChips();
         // 底栏这两个按钮兼做「当前在哪页」的指示
         btnJumpReverse.classList.toggle("on", isReverse);
         btnJumpConvert.classList.toggle("on", isConvert);
