@@ -492,6 +492,86 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
 .lgb-chip.miss span {
   color: var(--lg-danger);
 }
+/* 收藏夹选择弹窗 */
+.lgb-folderpicker {
+  width: min(420px, 92vw);
+}
+.lgb-folderpicker .hint {
+  margin: 2px 0 8px;
+  color: var(--lg-text-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.lgb-folderlist {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 46vh;
+  overflow-y: auto;
+  padding: 2px;
+}
+:is(.lgb-wrap, .lgb-overlay) button.lgb-folderrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--lg-line);
+  border-radius: var(--lg-r-sm);
+  background: var(--lg-sunken);
+  color: var(--lg-text);
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color var(--lg-dur), background var(--lg-dur);
+}
+:is(.lgb-wrap, .lgb-overlay) button.lgb-folderrow:hover {
+  border-color: var(--lg-accent);
+  background: var(--lg-accent-soft);
+}
+.lgb-folderrow .nm {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lgb-folderrow .n {
+  color: var(--lg-text-3);
+  font-size: 11px;
+}
+
+/* 收藏夹 chips：全部 / 未分类 / 各收藏夹 / ＋新建 */
+.lgb-chip.lgb-folderchip {
+  cursor: pointer;
+  user-select: none;
+}
+.lgb-chip.lgb-folderchip::before {
+  background: var(--lg-text-3);
+}
+.lgb-chip.lgb-folderchip.on {
+  border-color: var(--lg-accent);
+  background: var(--lg-accent-soft);
+}
+.lgb-chip.lgb-folderchip.on::before {
+  background: var(--lg-accent);
+  opacity: 1;
+}
+.lgb-chip.lgb-folderchip.on span {
+  color: var(--lg-text);
+}
+.lgb-chip.lgb-folderchip .n {
+  color: var(--lg-text-3);
+  font-size: 10px;
+}
+.lgb-chip.lgb-folderchip.add {
+  border-style: dashed;
+  padding-right: 8px;
+}
+.lgb-chip.lgb-folderchip.add::before {
+  display: none;
+}
 :is(.lgb-wrap, .lgb-br) .lgb-chip button {
   appearance: none;
   border: 0;
@@ -2590,6 +2670,31 @@ const I18N_EN = {
   "收藏失败：{err}": "Failed to favorite: {err}",
   "读取收藏失败：{err}": "Failed to load favorites: {err}",
   "还没有收藏 —— 在图库里点缩略图左上角的 ☆ 收藏": "No favorites yet — click ☆ on a thumbnail",
+  "未分类": "Unfiled",
+  "所有收藏（{name}）": "All favorites",
+  "还没归类的收藏": "Favorites not in any folder",
+  "收藏夹「{name}」（右键可删除）": "Folder \"{name}\" (right-click to delete)",
+  "＋ 新建收藏夹": "+ New folder",
+  "新建一个收藏夹": "Create a favorite folder",
+  "新建收藏夹": "New folder",
+  "收藏夹名字，例如：风景 / 精选 / 待修": "Folder name, e.g. landscape / picks / to-fix",
+  "新建": "Create",
+  "删除收藏夹": "Delete folder",
+  "删除收藏夹「{name}」？": "Delete folder \"{name}\"?",
+  "只删除这个分类，里面的图片仍然留在收藏里（不会取消收藏）。": "Only the category is removed — the images stay favorited.",
+  "已新建收藏夹：{name}": "Folder created: {name}",
+  "新建收藏夹失败：{err}": "Could not create folder: {err}",
+  "已删除收藏夹：{name}": "Folder deleted: {name}",
+  "读取收藏夹失败：{err}": "Could not load folders: {err}",
+  "加入收藏夹": "Add to folder",
+  "加入收藏夹 ({n})": "Add to folder ({n})",
+  "把选中的图片放进收藏夹（可以顺手新建一个）": "Put the selected images into a favorite folder (create one on the spot)",
+  "先选中图片再放进收藏夹": "Select some images first",
+  "把选中的 {n} 张图片放进哪个收藏夹？（没收藏的会自动收藏）": "Which folder should take the {n} selected image(s)? Images not yet favorited are favorited automatically.",
+  "还没有收藏夹，点下面「＋ 新建收藏夹」建一个": "No folders yet — use \"+ New folder\" below",
+  "已把 {n} 张放进「{name}」": "Added {n} image(s) to \"{name}\"",
+  "放入收藏夹失败：{err}": "Could not add to folder: {err}",
+  "这个收藏夹里还没有图片": "This folder has no images yet",
   "图库里没有带提示词的图片": "No images with prompts in Gallery",
   "还没有图片 —— 点「浏览」加一个文件夹": "No images yet — click Browse to add a folder",
   "已复制 {n} 条提示词到剪贴板": "{n} prompts copied to clipboard",
@@ -3373,6 +3478,10 @@ app.registerExtension({
         lastClicked: -1,
         invalid: [],
         favorites: new Map(),
+        // 收藏夹：folders = [{id,name,count}]；favFolder = all | none | 收藏夹 id
+        folders: [],
+        favFolder: "all",
+        favUnclassified: 0,
         source: "paths",
         searchMode: "name",
         // 排序：default / name-asc / name-desc / time-desc / time-asc
@@ -3700,7 +3809,10 @@ app.registerExtension({
       const btnDelSel = el("button", "lgb-btn sm warn", "删除选中");
       btnDelSel.style.display = "none";
       setTitle(btnDelSel, "图片 + 同名提示词一起移到回收站（可随时恢复）");
-      bulk.append(btnDelPrompts, btnDelSel);
+      const btnFavFolder = el("button", "lgb-btn sm", "加入收藏夹");
+      btnFavFolder.style.display = "none";
+      setTitle(btnFavFolder, "把选中的图片放进收藏夹（可以顺手新建一个）");
+      bulk.append(btnFavFolder, btnDelPrompts, btnDelSel);
 
       rowAdd.append(
         btnBrowse,
@@ -3852,17 +3964,57 @@ app.registerExtension({
 
       /* ---------------- chips ---------------- */
       // 路径标签已搬进「浏览」弹窗（那里空间更宽，能看全路径），
-      // 主面板这行只在收藏模式借用来放一句说明。
+      // 主面板这行只在收藏模式用：收藏夹分类。
+      function favoritePathsForView() {
+        const rows = [...state.favorites.entries()];
+        const mode = state.favFolder || "all";
+        if (mode === "all") return rows.map(([path]) => path);
+        if (mode === "none") {
+          return rows.filter(([, meta]) => !(meta?.folders || []).length).map(([path]) => path);
+        }
+        return rows.filter(([, meta]) => (meta?.folders || []).includes(mode)).map(([path]) => path);
+      }
+
       function renderChips() {
         const isFav = state.source === "favorites";
         chips.style.display = isFav ? "" : "none";
         chips.replaceChildren();
         if (!isFav) return;
-        chips.append(
-          elTpl("span", "lgb-count", "收藏模式 · {n} 张（悬停看提示词，⤢ 看大图，☆ 取消收藏）", {
-            n: state.favorites.size,
-          })
-        );
+
+        const mk = (key, label, count, hint) => {
+          const chip = el("div", "lgb-chip lgb-folderchip");
+          chip.classList.toggle("on", (state.favFolder || "all") === key);
+          chip.append(el("span", "", label), el("span", "n", String(count || 0)));
+          setTitleT(chip, hint, { name: label });
+          chip.addEventListener("click", () => {
+            state.favFolder = key;
+            renderChips();
+            refresh({ overridePaths: favoritePathsForView() });
+          });
+          if (key.startsWith("f")) {
+            chip.addEventListener("contextmenu", (evt) => {
+              evt.preventDefault();
+              confirmDeleteFolder(key, label);
+            });
+          }
+          return chip;
+        };
+
+        chips.append(mk("all", "全部", state.favorites.size, "所有收藏（{name}）"));
+        if (state.favUnclassified) {
+          chips.append(mk("none", "未分类", state.favUnclassified, "还没归类的收藏"));
+        }
+        state.folders.forEach((folder) => {
+          chips.append(
+            mk(folder.id, folder.name, folder.count, "收藏夹「{name}」（右键可删除）")
+          );
+        });
+
+        const addChip = el("div", "lgb-chip lgb-folderchip add");
+        addChip.append(tspan("＋ 新建收藏夹"));
+        setTitle(addChip, "新建一个收藏夹");
+        addChip.addEventListener("click", () => createFolderFlow());
+        chips.append(addChip);
       }
 
       // 供「浏览」弹窗渲染已加入的路径
@@ -4058,6 +4210,11 @@ app.registerExtension({
             ? "把选中的提示词文件移到回收站，图片保留（可随时恢复）"
             : "图片 + 同名提示词一起移到回收站（可随时恢复）"
         );
+        const favFolderCount = onPrompts ? 0 : state.selected.size;
+        btnFavFolder.style.display = favFolderCount ? "" : "none";
+        setTpl(btnFavFolder, favFolderCount ? "加入收藏夹 ({n})" : "加入收藏夹", {
+          n: favFolderCount,
+        });
         const selectedList = [...state.selected.keys()];
         const byPath = new Map(state.items.map((it) => [it.path, it]));
         const promptCount = selectedList.filter((path) => byPath.get(path)?.has_prompt).length;
@@ -4987,7 +5144,7 @@ app.registerExtension({
           return;
         }
         if (isFav) {
-          refresh({ overridePaths: [...state.favorites.keys()] });
+          refresh({ overridePaths: favoritePathsForView() });
           return;
         }
         refresh();
@@ -7719,13 +7876,28 @@ app.registerExtension({
           setStatus("读取收藏失败：{err}", { error: true, vars: { err: err.message || err } });
           return;
         }
+        // 收藏夹分类（数量 + 列表）跟收藏一起刷新
+        try {
+          const folders = await apiJson("/local_gallery/favorites/folders");
+          if (Array.isArray(folders.folders)) state.folders = folders.folders;
+          if (Number.isFinite(Number(folders.unclassified))) {
+            state.favUnclassified = Number(folders.unclassified);
+          }
+          if (state.favFolder !== "all" && state.favFolder !== "none") {
+            const alive = state.folders.some((f) => f.id === state.favFolder);
+            if (!alive) state.favFolder = "all";
+          }
+        } catch (err) {
+          /* 收藏夹读失败不影响收藏本身 */
+        }
         updateTabCounts();
+        renderChips();
         // 已渲染的缩略图同步星标状态
         grid.querySelectorAll(".lgb-item").forEach((dom) => {
           paintFav(dom.querySelector(".lgb-fav"), state.favorites.has(dom.dataset.path));
         });
         if (refreshView && state.source === "favorites") {
-          refresh({ overridePaths: [...state.favorites.keys()] });
+          refresh({ overridePaths: favoritePathsForView() });
         }
       }
 
@@ -7774,6 +7946,210 @@ app.registerExtension({
             if (activeTab === "prompts") renderPrompts({ reset: true });
           }
         }
+      }
+
+      /* ---------------- 收藏夹（分类） ---------------- */
+      // 通用文本输入弹窗：收藏夹命名用
+      function openTextPrompt({ title, placeholder = "", value = "", okText = "确定", onOk }) {
+        const overlay = mkOverlay();
+        const box = el("div", "lgb-confirm");
+        const body = el("div", "body");
+        const input = document.createElement("input");
+        input.className = "lgb-input";
+        input.value = value;
+        setPh(input, placeholder);
+        body.append(input);
+        const foot = el("div", "foot");
+        const btnCancel = el("button", "lgb-btn", "取消");
+        const btnOk = el("button", "lgb-btn primary");
+        setTpl(btnOk, okText);
+        foot.append(btnCancel, btnOk);
+        box.append(elTpl("h3", "", title), body, foot);
+        overlay.append(box);
+        document.body.appendChild(overlay);
+        input.focus();
+        input.select();
+
+        const close = () => {
+          overlay.remove();
+          window.removeEventListener("keydown", onKey);
+        };
+        function submit() {
+          const text = input.value.trim();
+          if (!text) {
+            input.focus();
+            return;
+          }
+          close();
+          onOk?.(text);
+        }
+        function onKey(evt) {
+          if (evt.key === "Escape") close();
+          else if (evt.key === "Enter") {
+            evt.preventDefault();
+            submit();
+          }
+        }
+        window.addEventListener("keydown", onKey);
+        btnCancel.addEventListener("click", close);
+        btnOk.addEventListener("click", submit);
+        overlay.addEventListener("click", (evt) => {
+          if (evt.target === overlay) close();
+        });
+      }
+
+      function applyFolderState(data) {
+        if (Array.isArray(data?.folders)) state.folders = data.folders;
+        if (Number.isFinite(Number(data?.unclassified))) {
+          state.favUnclassified = Number(data.unclassified);
+        }
+        if (Array.isArray(data?.items)) {
+          state.favorites = new Map(data.items.map((it) => [it.path, it]));
+        }
+        updateTabCounts();
+        renderChips();
+      }
+
+      async function reloadFolders() {
+        try {
+          const data = await apiJson("/local_gallery/favorites/folders");
+          applyFolderState(data);
+        } catch (err) {
+          setStatus("读取收藏夹失败：{err}", { error: true, vars: { err: err.message || err } });
+        }
+      }
+
+      function createFolderFlow({ onCreated } = {}) {
+        openTextPrompt({
+          title: "新建收藏夹",
+          placeholder: "收藏夹名字，例如：风景 / 精选 / 待修",
+          okText: "新建",
+          onOk: async (name) => {
+            try {
+              const data = await apiJson("/local_gallery/favorites/folders", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ name }),
+              });
+              applyFolderState(data);
+              setStatus("已新建收藏夹：{name}", { vars: { name } });
+              onCreated?.(data.folder);
+            } catch (err) {
+              setStatus("新建收藏夹失败：{err}", { error: true, vars: { err: err.message || err } });
+            }
+          },
+        });
+      }
+
+      function confirmDeleteFolder(folderId, name) {
+        openConfirm({
+          title: "删除收藏夹「{name}」？",
+          titleVars: { name },
+          body: t("只删除这个分类，里面的图片仍然留在收藏里（不会取消收藏）。"),
+          okText: "删除收藏夹",
+          onOk: async () => {
+            const data = await apiJson("/local_gallery/favorites/folders/delete", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ id: folderId }),
+            });
+            if (state.favFolder === folderId) state.favFolder = "all";
+            applyFolderState(data);
+            setStatus("已删除收藏夹：{name}", { vars: { name } });
+            if (state.source === "favorites") {
+              refresh({ overridePaths: favoritePathsForView() });
+            }
+          },
+        });
+      }
+
+      // 把选中的图片放进收藏夹：列出现有收藏夹 + 就地新建
+      function openFolderPicker(paths) {
+        const list = [...new Set((paths || []).filter(Boolean))];
+        if (!list.length) {
+          setStatus("先选中图片再放进收藏夹", { error: true });
+          return;
+        }
+        const overlay = mkOverlay();
+        const box = el("div", "lgb-confirm lgb-folderpicker");
+        const body = el("div", "body");
+        const hint = elTpl(
+          "div",
+          "hint",
+          "把选中的 {n} 张图片放进哪个收藏夹？（没收藏的会自动收藏）",
+          { n: list.length }
+        );
+        const rows = el("div", "lgb-folderlist");
+        const foot = el("div", "foot");
+        const btnNew = el("button", "lgb-btn");
+        btnNew.append(tspan("＋ 新建收藏夹"));
+        const btnCancel = el("button", "lgb-btn", "取消");
+        foot.append(btnNew, el("div", "lgb-head-spacer"), btnCancel);
+        box.append(el("h3", "", "加入收藏夹"), hint, rows, foot);
+        overlay.append(box);
+        document.body.appendChild(overlay);
+
+        const close = () => {
+          overlay.remove();
+          window.removeEventListener("keydown", onKey);
+        };
+        function onKey(evt) {
+          if (evt.key === "Escape") close();
+        }
+        window.addEventListener("keydown", onKey);
+        btnCancel.addEventListener("click", close);
+        overlay.addEventListener("click", (evt) => {
+          if (evt.target === overlay) close();
+        });
+
+        async function assignTo(folder) {
+          try {
+            const data = await apiJson("/local_gallery/favorites/folders/assign", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ paths: list, folder_id: folder.id, action: "add" }),
+            });
+            applyFolderState(data);
+            close();
+            setStatus("已把 {n} 张放进「{name}」", {
+              vars: { n: data.changed?.length || list.length, name: folder.name },
+            });
+            // 收藏页：星标和当前列表都要跟着变
+            grid.querySelectorAll(".lgb-item").forEach((dom) => {
+              paintFav(dom.querySelector(".lgb-fav"), state.favorites.has(dom.dataset.path));
+            });
+            if (state.source === "favorites") {
+              refresh({ overridePaths: favoritePathsForView() });
+            }
+          } catch (err) {
+            setStatus("放入收藏夹失败：{err}", { error: true, vars: { err: err.message || err } });
+          }
+        }
+
+        function paintRows() {
+          rows.replaceChildren();
+          if (!state.folders.length) {
+            rows.append(el("div", "lgb-empty", "还没有收藏夹，点下面「＋ 新建收藏夹」建一个"));
+            return;
+          }
+          state.folders.forEach((folder) => {
+            const row = el("button", "lgb-folderrow");
+            row.append(el("span", "nm", folder.name), el("span", "n", `${folder.count || 0} 张`));
+            row.addEventListener("click", () => assignTo(folder));
+            rows.append(row);
+          });
+        }
+
+        btnNew.addEventListener("click", () => {
+          createFolderFlow({
+            onCreated: (folder) => {
+              paintRows();
+              if (folder) assignTo(folder);
+            },
+          });
+        });
+
+        paintRows();
       }
 
       /* ---------------- 网格 ---------------- */
@@ -8008,7 +8384,9 @@ app.registerExtension({
           if (activeTab === "prompts" && promptMode === "orphans") renderOrphans({ reset: true });
           setStatus(
             fromFavorites
-              ? "还没有收藏 —— 在图库里点缩略图左上角的 ☆ 收藏"
+              ? state.favorites.size
+                ? "这个收藏夹里还没有图片"
+                : "还没有收藏 —— 在图库里点缩略图左上角的 ☆ 收藏"
               : "还没有图片 —— 点「浏览」加一个文件夹"
           );
           hideTip();
@@ -8354,6 +8732,10 @@ app.registerExtension({
       btnDelPrompts.addEventListener("click", () => {
         if (!state.selected.size) return;
         deletePrompts([...state.selected.keys()]);
+      });
+      btnFavFolder.addEventListener("click", () => {
+        if (!state.selected.size) return;
+        openFolderPicker([...state.selected.keys()]);
       });
 
       tabGallery.addEventListener("click", () => switchTab("gallery"));

@@ -116,6 +116,10 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 - 预览、悬停、大图、删除的行为和图库页完全一致
 - 删除图片时自动取消收藏，收藏页不会留死链
 - 设置 →「收藏」里可以一键**导出**：把收藏的图片和提示词**复制**到指定文件夹（同名跳过，不覆盖）
+- **收藏夹分类**：收藏页顶部一排 chip —— `全部` / `未分类` / 各个收藏夹 / `＋ 新建收藏夹`，点一下就只看这个夹里的图
+- 一张图可以同时属于多个收藏夹；新建重名会被拦下，收藏夹名字最多 40 字
+- **批量放入收藏夹**：在图库或收藏页选中图片 → 路径栏的「加入收藏夹 (N)」→ 选一个夹（弹窗里也能直接新建）；没收藏过的图会自动收藏
+- 右键收藏夹 chip 可以删除分类，**图片仍然留在收藏里**（不会取消收藏）
 
 ### 提示词
 
@@ -339,6 +343,10 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 | GET | `/local_gallery/favorites` | 收藏列表（按时间倒序） |
 | POST | `/local_gallery/favorites` `{"paths":[...],"action":"add\|remove\|toggle"}` | 切换收藏 |
 | POST | `/local_gallery/favorites/export` `{"dest":"...","overwrite":false}` | 导出收藏 |
+| GET | `/local_gallery/favorites/folders` | 收藏夹列表 + 各夹数量 + 未分类数量 |
+| POST | `/local_gallery/favorites/folders` `{"name":"风景"}` | 新建收藏夹（重名会被拒） |
+| POST | `/local_gallery/favorites/folders/delete` `{"id":"f..."}` | 删除收藏夹（图片仍保留在收藏里） |
+| POST | `/local_gallery/favorites/folders/assign` `{"paths":[...],"folder_id":"f...","action":"add"}` | 批量放进/移出收藏夹，未收藏的自动收藏 |
 | GET / POST | `/local_gallery/ui/settings` | UI 设置（`favorites_export_dir`） |
 | GET / POST | `/local_gallery/config` | 读 / 写 `config.json`（白名单字段，非法值 400） |
 | GET | `/local_gallery/convert/info` | 转换面板的可选项 + 是否有任务在跑 |

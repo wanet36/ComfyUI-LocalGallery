@@ -116,6 +116,10 @@ Aggregates favorites across folders, independent of the current path list.
 - Preview, hover, viewer and delete behave exactly like the Gallery tab
 - Deleting an image removes it from favorites, so no dead links
 - Settings → **Favorites** can **export**: copies favorited images and prompts into a folder (existing files are skipped, never overwritten)
+- **Favorite folders**: a chip row at the top of the Favorites tab — `All` / `Unfiled` / each folder / `+ New folder`. Clicking one filters the grid to that folder
+- An image can live in several folders; duplicate names are rejected and names are capped at 40 characters
+- **Bulk add**: select images in Gallery or Favorites → **Add to folder (N)** in the path bar → pick a folder (or create one right there). Images that were not favorited get favorited automatically
+- Right-click a folder chip to delete the category — the images **stay favorited**
 
 ### Prompts
 
@@ -340,6 +344,10 @@ Every field is also editable from the Settings panel; editing the JSON by hand w
 | GET | `/local_gallery/favorites` | Favorites, newest first |
 | POST | `/local_gallery/favorites` `{"paths":[...],"action":"add\|remove\|toggle"}` | Toggle favorites |
 | POST | `/local_gallery/favorites/export` `{"dest":"...","overwrite":false}` | Export favorites |
+| GET | `/local_gallery/favorites/folders` | Folder list with per-folder and unfiled counts |
+| POST | `/local_gallery/favorites/folders` `{"name":"landscape"}` | Create a folder (duplicate names rejected) |
+| POST | `/local_gallery/favorites/folders/delete` `{"id":"f..."}` | Delete a folder (images stay favorited) |
+| POST | `/local_gallery/favorites/folders/assign` `{"paths":[...],"folder_id":"f...","action":"add"}` | Bulk add/remove; unfavorited images get favorited |
 | GET / POST | `/local_gallery/ui/settings` | UI settings (`favorites_export_dir`) |
 | GET / POST | `/local_gallery/config` | Read / write `config.json` (whitelisted fields, 400 on bad values) |
 | GET | `/local_gallery/convert/info` | Convert options + whether a job is running |

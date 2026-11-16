@@ -37,7 +37,15 @@ from .gallery import (
     trash_prompts,
     trash_thumb,
 )
-from .favorites import export_favorites, list_favorites, toggle_favorites
+from .favorites import (
+    assign_folder,
+    create_folder,
+    delete_folder,
+    export_favorites,
+    list_favorites,
+    list_folders,
+    toggle_favorites,
+)
 from .prompt_reader import (
     TEXT_SIDECAR_EXTENSIONS,
     find_sidecar_prompt,
@@ -402,6 +410,89 @@ def register_routes() -> bool:
 
         result["ok"] = True
         result["count"] = len(result.get("items", []))
+        return web.json_response(result)
+
+    # ------------------------------------------------------- favorites folders
+    @routes.get(f"{NODE_API_PREFIX}/favorites/folders")
+    async def local_gallery_folders(request: web.Request):
+        loop = asyncio.get_running_loop()
+        try:
+            data = await loop.run_in_executor(None, list_folders)
+        except Exception as exc:
+            logger.exception("[LocalGallery] 读取收藏夹失败")
+            return _deny(f"读取收藏夹失败：{exc}", 500)
+        return web.json_response({"ok": True, **data})
+
+    @routes.post(f"{NODE_API_PREFIX}/favorites/folders")
+    async def local_gallery_folder_create(request: web.Request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return _deny("请求体不是合法 JSON")
+        if not isinstance(payload, dict):
+            return _deny("请求体必须是对象")
+        name = str(payload.get("name") or "")
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(None, create_folder, name)
+        except Exception as exc:
+            logger.exception("[LocalGallery] 新建收藏夹失败")
+            return _deny(f"新建收藏夹失败：{exc}", 500)
+        if not result.get("ok"):
+            return _deny(result.get("error") or "新建失败")
+        logger.info("[LocalGallery] 新建收藏夹：%s", result["folder"]["name"])
+        return web.json_response(result)
+
+    @routes.post(f"{NODE_API_PREFIX}/favorites/folders/delete")
+    async def local_gallery_folder_delete(request: web.Request):
+        try:
+            payload = await request.json()
+        except Exception:
+            return _deny("请求体不是合法 JSON")
+        if not isinstance(payload, dict):
+            return _deny("请求体必须是对象")
+        folder_id = str(payload.get("id") or "")
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(None, delete_folder, folder_id)
+        except Exception as exc:
+            logger.exception("[LocalGallery] 删除收藏夹失败")
+            return _deny(f"删除收藏夹失败：{exc}", 500)
+        if not result.get("ok"):
+            return _deny(result.get("error") or "删除失败")
+        return web.json_response(result)
+
+    @routes.post(f"{NODE_API_PREFIX}/favorites/folders/assign")
+    async def local_gallery_folder_assign(request: web.Request):
+        """批量把图片放进收藏夹（没收藏的会自动收藏）。"""
+        try:
+            payload = await request.json()
+        except Exception:
+            return _deny("请求体不是合法 JSON")
+        if not isinstance(payload, dict):
+            return _deny("请求体必须是对象")
+        paths = payload.get("paths")
+        if isinstance(paths, str):
+            paths = [paths]
+        if not isinstance(paths, list) or not paths:
+            return _deny("paths 必须是非空数组")
+        if len(paths) > 2000:
+            return _deny("一次最多操作 2000 个")
+        folder_id = str(payload.get("folder_id") or "")
+        action = str(payload.get("action") or "add")
+
+        loop = asyncio.get_running_loop()
+        try:
+            result = await loop.run_in_executor(
+                None, assign_folder, [str(p) for p in paths], folder_id, action
+            )
+        except Exception as exc:
+            logger.exception("[LocalGallery] 更新收藏夹失败")
+            return _deny(f"更新收藏夹失败：{exc}", 500)
+        if not result.get("ok"):
+            return _deny(result.get("error") or "更新失败")
+        result["count"] = len(result.get("items", []))
+        logger.info("[LocalGallery] 收藏夹更新：%s 个文件", len(result.get("changed", [])))
         return web.json_response(result)
 
     # --------------------------------------------------------------- caption

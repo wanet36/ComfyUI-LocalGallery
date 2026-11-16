@@ -8,41 +8,73 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import threading
 import time
+import uuid
 from pathlib import Path
 
 from .prompt_reader import TEXT_SIDECAR_EXTENSIONS
 
 NODE_DIR = Path(__file__).resolve().parent
 FAVORITES_PATH = NODE_DIR / "favorites.json"
+FOLDER_NAME_MAX = 40
 
 _LOCK = threading.Lock()
 _cache: dict | None = None
 
 
 def _load() -> dict:
-    """读缓存或磁盘。返回 {"version": 1, "items": {path: {...}}}。"""
+    """读缓存或磁盘。返回 {"version": 2, "folders": [...], "items": {path: {...}}}。
+
+    v1 的旧文件没有 folders，读进来按空列表处理（下次写入自动升级）。
+    """
     global _cache
     if _cache is not None:
         return _cache
 
-    data: dict = {"version": 1, "items": {}}
+    data: dict = {"version": 2, "folders": [], "items": {}}
     try:
         if FAVORITES_PATH.is_file():
             raw = json.loads(FAVORITES_PATH.read_text(encoding="utf-8"))
-            items = raw.get("items") if isinstance(raw, dict) else None
-            if isinstance(items, dict):
-                cleaned = {}
-                for path, meta in items.items():
-                    if not isinstance(path, str) or not path.strip():
-                        continue
-                    cleaned[path] = meta if isinstance(meta, dict) else {}
-                data["items"] = cleaned
+            if isinstance(raw, dict):
+                folders = raw.get("folders")
+                if isinstance(folders, list):
+                    seen_ids: set[str] = set()
+                    for folder in folders:
+                        if not isinstance(folder, dict):
+                            continue
+                        fid = str(folder.get("id") or "").strip()
+                        name = str(folder.get("name") or "").strip()
+                        if not fid or not name or fid in seen_ids:
+                            continue
+                        seen_ids.add(fid)
+                        data["folders"].append(
+                            {
+                                "id": fid,
+                                "name": name[:FOLDER_NAME_MAX],
+                                "created": float(folder.get("created") or 0),
+                            }
+                        )
+                items = raw.get("items")
+                if isinstance(items, dict):
+                    cleaned = {}
+                    for path, meta in items.items():
+                        if not isinstance(path, str) or not path.strip():
+                            continue
+                        entry = dict(meta) if isinstance(meta, dict) else {}
+                        ids = entry.get("folders")
+                        entry["folders"] = (
+                            [str(x) for x in ids if str(x or "").strip()]
+                            if isinstance(ids, list)
+                            else []
+                        )
+                        cleaned[path] = entry
+                    data["items"] = cleaned
     except Exception:
         # 文件损坏时不阻塞使用，按空列表处理（下次写入会覆盖）
-        data = {"version": 1, "items": {}}
+        data = {"version": 2, "folders": [], "items": {}}
 
     _cache = data
     return data
@@ -124,7 +156,7 @@ def toggle_favorites(paths: list[str], action: str = "toggle", prompts: dict | N
                 should_add = key is None
 
             if should_add:
-                entry = {"added": now}
+                entry = {"added": now, "folders": []}
                 prompt = prompts.get(path)
                 if not prompt:
                     # 前端可能用另一种分隔符传 prompt 表，按归一化再找一次
@@ -141,7 +173,7 @@ def toggle_favorites(paths: list[str], action: str = "toggle", prompts: dict | N
                 removed.append(key)
 
         if added or removed:
-            data["version"] = 1
+            data["version"] = 2
             _save(data)
 
         snapshot = []
@@ -236,4 +268,150 @@ def export_favorites(dest: str, overwrite: bool = False) -> dict:
         "copied": copied,
         "skipped": skipped,
         "failed": failed,
+    }
+
+
+# --------------------------------------------------------------------------- #
+# 收藏夹（分类）
+# --------------------------------------------------------------------------- #
+def _clean_folder_name(raw: str) -> str:
+    name = re.sub(r"\s+", " ", str(raw or "")).strip()
+    return name[:FOLDER_NAME_MAX]
+
+
+def _snapshot(data: dict) -> list[dict]:
+    rows = []
+    for path, meta in data["items"].items():
+        row = {"path": path}
+        row.update(meta if isinstance(meta, dict) else {})
+        rows.append(row)
+    rows.sort(key=lambda r: r.get("added") or 0, reverse=True)
+    return rows
+
+
+def _folder_state(data: dict) -> dict:
+    counts: dict[str, int] = {}
+    unclassified = 0
+    for meta in data["items"].values():
+        ids = meta.get("folders") or []
+        if not ids:
+            unclassified += 1
+        for fid in ids:
+            counts[fid] = counts.get(fid, 0) + 1
+    folders = [
+        {**folder, "count": counts.get(folder["id"], 0)} for folder in data["folders"]
+    ]
+    folders.sort(key=lambda f: (f.get("name") or "").lower())
+    return {
+        "folders": folders,
+        "unclassified": unclassified,
+        "total": len(data["items"]),
+    }
+
+
+def list_folders() -> dict:
+    with _LOCK:
+        data = _load()
+        return _folder_state(data)
+
+
+def create_folder(name: str) -> dict:
+    clean = _clean_folder_name(name)
+    if not clean:
+        return {"ok": False, "error": "收藏夹名字不能为空"}
+    with _LOCK:
+        data = _load()
+        lowered = clean.lower()
+        for folder in data["folders"]:
+            if folder["name"].strip().lower() == lowered:
+                return {"ok": False, "error": f"已经有同名收藏夹：{folder['name']}"}
+        folder = {
+            "id": f"f{uuid.uuid4().hex[:10]}",
+            "name": clean,
+            "created": time.time(),
+        }
+        data["folders"].append(folder)
+        data["version"] = 2
+        _save(data)
+        state = _folder_state(data)
+    return {"ok": True, "folder": {**folder, "count": 0}, **state}
+
+
+def delete_folder(folder_id: str) -> dict:
+    fid = str(folder_id or "").strip()
+    if not fid:
+        return {"ok": False, "error": "缺少收藏夹 id"}
+    with _LOCK:
+        data = _load()
+        before = len(data["folders"])
+        data["folders"] = [f for f in data["folders"] if f["id"] != fid]
+        if len(data["folders"]) == before:
+            return {"ok": False, "error": "收藏夹不存在"}
+        for meta in data["items"].values():
+            ids = meta.get("folders")
+            if isinstance(ids, list) and fid in ids:
+                meta["folders"] = [x for x in ids if x != fid]
+        data["version"] = 2
+        _save(data)
+        state = _folder_state(data)
+    return {"ok": True, **state}
+
+
+def assign_folder(paths: list[str], folder_id: str, action: str = "add") -> dict:
+    """把一批图片放进 / 移出某个收藏夹。
+
+    - 图片还没被收藏时自动加进收藏（否则「放入收藏夹」看不见）
+    - action: add | remove
+    """
+    fid = str(folder_id or "").strip()
+    if not fid:
+        return {"ok": False, "error": "缺少收藏夹 id"}
+    action = "remove" if action == "remove" else "add"
+    with _LOCK:
+        data = _load()
+        if not any(f["id"] == fid for f in data["folders"]):
+            return {"ok": False, "error": "收藏夹不存在"}
+
+        items = data["items"]
+        now = time.time()
+        changed: list[str] = []
+        for raw in paths:
+            path = str(raw or "").strip()
+            if not path:
+                continue
+            key = _find_key(items, path)
+            if action == "add":
+                if key is None:
+                    key = _storage_key(path)
+                    items[key] = {"added": now, "folders": [fid]}
+                    changed.append(key)
+                    continue
+                meta = items[key]
+                ids = meta.get("folders")
+                if not isinstance(ids, list):
+                    ids = []
+                if fid not in ids:
+                    ids.append(fid)
+                    meta["folders"] = ids
+                    changed.append(key)
+            else:
+                if key is None:
+                    continue
+                meta = items[key]
+                ids = meta.get("folders")
+                if isinstance(ids, list) and fid in ids:
+                    meta["folders"] = [x for x in ids if x != fid]
+                    changed.append(key)
+
+        if changed:
+            data["version"] = 2
+            _save(data)
+        snapshot = _snapshot(data)
+        state = _folder_state(data)
+    return {
+        "ok": True,
+        "changed": changed,
+        "count": len(changed),
+        "items": snapshot,
+        **state,
     }
