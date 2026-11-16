@@ -398,18 +398,61 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   background: var(--lg-hover);
   border-color: var(--lg-line);
 }
-/* 单选模式：按钮常亮，提醒「点一下就替换」而不是加选。
-   必须放在 .lgb-btn.sm 之后，否则会被它的 background:transparent 盖掉 */
-:is(.lgb-wrap, .lgb-overlay) .lgb-btn.sm.lgb-pickmode.on {
-  background: var(--lg-accent-soft);
-  border-color: var(--lg-accent);
-  color: var(--lg-accent);
+/* 单选 / 多选：滑块开关。滑块宽度由 JS 按当前标签实测，中英文切换都不错位 */
+:is(.lgb-wrap, .lgb-overlay) .lgb-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  height: var(--lg-ctl-h-sm);
+  padding: 2px;
+  background: var(--lg-sunken);
+  border: 1px solid var(--lg-line);
+  border-radius: 999px;
+  user-select: none;
+  cursor: pointer;
+}
+:is(.lgb-wrap, .lgb-overlay) .lgb-switch .knob {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  left: 2px;
+  width: 34px;
+  border-radius: 999px;
+  background: var(--lg-accent);
+  transition: transform 0.18s cubic-bezier(0.4, 0, 0.2, 1), width 0.18s ease;
+  pointer-events: none;
+}
+:is(.lgb-wrap, .lgb-overlay) .lgb-switch .seg {
+  position: relative;
+  z-index: 1;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--lg-text-3);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color var(--lg-dur);
+}
+:is(.lgb-wrap, .lgb-overlay) .lgb-switch .seg:hover {
+  color: var(--lg-text);
+}
+:is(.lgb-wrap, .lgb-overlay) .lgb-switch .seg.on {
+  color: var(--lg-on-accent);
   font-weight: 600;
 }
-:is(.lgb-wrap, .lgb-overlay) .lgb-btn.sm.lgb-pickmode.on:hover {
-  background: var(--lg-accent-soft);
-  color: var(--lg-accent-2);
-  border-color: var(--lg-accent-2);
+:is(.lgb-wrap, .lgb-overlay) .lgb-switch .seg:focus-visible {
+  outline: 1px solid var(--lg-accent);
+  outline-offset: 1px;
 }
 :is(.lgb-wrap, .lgb-overlay) .lgb-btn.primary {
   background: var(--lg-accent);
@@ -3015,8 +3058,9 @@ const I18N_EN = {
   "清空选择": "Clear selection",
   "单选": "Single",
   "多选": "Multi",
-  "当前：单选。点一下只保留这一张，再点同一张取消选中。点击切到多选": "Single-select: a click keeps only that image, clicking it again deselects. Click to switch to multi-select.",
-  "当前：多选。点一下加选、再点取消，Shift 连选。点击切到单选": "Multi-select: click to add, click again to remove, Shift for a range. Click to switch to single-select.",
+  "单选：点一下只保留这一张，再点同一张取消选中": "Single: a click keeps only that image, clicking it again deselects",
+  "多选：点一下加选、再点取消，Shift 连选": "Multi: click to add, click again to remove, Shift for a range",
+  "选择模式：单选 / 多选（点另一侧就滑过去）": "Selection mode: single / multi (click the other side and the knob slides over)",
   "复制提示词": "Copy prompts",
   "复制这张的提示词": "Copy this image's prompt",
   "这张没有同名提示词": "No prompt file for this image",
@@ -4097,7 +4141,14 @@ app.registerExtension({
 
       /* 底栏：选择信息 + 批量操作（批量删除已挪到路径栏、回收站左边） */
       const rowFoot = el("div", "lgb-row lgb-foot");
-      const btnMode = el("button", "lgb-btn sm lgb-pickmode", "多选");
+      /* 单选 / 多选：滑块开关（两块标签 + 一个滑过去的滑块） */
+      const modeSwitch = el("div", "lgb-switch");
+      const modeKnob = el("span", "knob");
+      const segSingle = el("button", "seg");
+      segSingle.append(tspan("单选"));
+      const segMulti = el("button", "seg");
+      segMulti.append(tspan("多选"));
+      modeSwitch.append(modeKnob, segSingle, segMulti);
       const selLabel = el("span", "lgb-selpill", "已选 0");
       const statusLabel = el("span", "lgb-status", "悬停缩略图可预览提示词");
       statusLabel.dataset.i18nStatus = "悬停缩略图可预览提示词";
@@ -4108,7 +4159,7 @@ app.registerExtension({
       const btnJumpConvert = el("button", "lgb-btn sm", "转换");
       setTitle(btnJumpConvert, "跳到转换压缩页：批量转格式 / 压体积 / 缩放");
       rowFoot.append(
-        btnMode,
+        modeSwitch,
         selLabel,
         statusLabel,
         btnJumpReverse,
@@ -4117,14 +4168,16 @@ app.registerExtension({
       );
 
       /* 单选 / 多选切换：模式存本地，切到单选时把多余的选中项裁掉 */
-      btnMode.addEventListener("click", () => {
-        state.pickMode = state.pickMode === "single" ? "multi" : "single";
+      function setPickMode(mode) {
+        const next = mode === "single" ? "single" : "multi";
+        const changed = next !== state.pickMode;
+        state.pickMode = next;
         try {
-          localStorage.setItem(PICK_KEY, state.pickMode);
+          localStorage.setItem(PICK_KEY, next);
         } catch (err) {
           /* 忽略：存不住也只是下次回到默认多选 */
         }
-        if (state.pickMode === "single" && state.selected.size > 1) {
+        if (changed && next === "single" && state.selected.size > 1) {
           const keep = [...state.selected.entries()].sort((a, b) => a[1] - b[1])[0];
           state.selected.clear();
           if (keep) state.selected.set(keep[0], 0);
@@ -4132,9 +4185,22 @@ app.registerExtension({
         }
         syncPickMode();
         paintSelection();
+      }
+
+      segSingle.addEventListener("click", () => setPickMode("single"));
+      segMulti.addEventListener("click", () => setPickMode("multi"));
+      // 点在滑块或缝隙上也能拨过去（真正的开关手感，不必非点文字）
+      modeSwitch.addEventListener("click", (evt) => {
+        if (evt.target.closest?.(".seg")) return;
+        setPickMode(state.pickMode === "single" ? "multi" : "single");
       });
 
       syncPickMode();
+      // 首帧量一次真实宽度；容器变宽（切语言）时再量，别让滑块和文字错位
+      requestAnimationFrame(placeModeKnob);
+      if (typeof ResizeObserver === "function") {
+        new ResizeObserver(() => placeModeKnob()).observe(modeSwitch);
+      }
 
       wrap.append(
         head,
@@ -4324,19 +4390,36 @@ app.registerExtension({
         }
       }
 
-      /* 单选 / 多选按钮的外观，以及和「全选 / 反选」的互斥 */
+      /* 滑块停在当前模式那一格：量一下标签的真实宽度，中英文都不会错位 */
+      function placeModeKnob(tries = 0) {
+        const active = state.pickMode === "single" ? segSingle : segMulti;
+        const width = active.offsetWidth;
+        if (!width) {
+          // 面板还没挂到 DOM（宽高为 0）时下一帧再量，最多重试 20 帧
+          if (tries < 20 && modeSwitch.isConnected) {
+            requestAnimationFrame(() => placeModeKnob(tries + 1));
+          }
+          return;
+        }
+        modeKnob.style.width = `${width}px`;
+        modeKnob.style.transform = `translateX(${active.offsetLeft - 2}px)`;
+      }
+
+      /* 滑块的外观，以及和「全选」的互斥 */
       function syncPickMode() {
         const single = state.pickMode === "single";
-        setLabel(btnMode, single ? "单选" : "多选");
-        btnMode.classList.toggle("on", single);
-        setTitleT(
-          btnMode,
-          single
-            ? "当前：单选。点一下只保留这一张，再点同一张取消选中。点击切到多选"
-            : "当前：多选。点一下加选、再点取消，Shift 连选。点击切到单选"
-        );
+        segSingle.classList.toggle("on", single);
+        segMulti.classList.toggle("on", !single);
+        segSingle.setAttribute("aria-pressed", single ? "true" : "false");
+        segMulti.setAttribute("aria-pressed", single ? "false" : "true");
+        modeSwitch.classList.toggle("single", single);
+        modeSwitch.classList.toggle("multi", !single);
+        setTitle(segSingle, "单选：点一下只保留这一张，再点同一张取消选中");
+        setTitle(segMulti, "多选：点一下加选、再点取消，Shift 连选");
+        setTitle(modeSwitch, "选择模式：单选 / 多选（点另一侧就滑过去）");
         // 全选一次会选多张，单选下没有意义
         btnAll.disabled = single;
+        placeModeKnob();
       }
 
       function toggleSelect(path, index, { range = false, exclusive = false } = {}) {

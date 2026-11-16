@@ -60,7 +60,7 @@ Five bands, top to bottom:
 | **Path bar** (Gallery / Favorites) | Browse, Settings, ⟳ rescan, the batch group (`Delete selected ▾` / `Select all` / `Clear selection`; on Favorites it becomes `Unfavorite (N)` + `Add to folder (N)`), Trash |
 | **Filter row** | Include subfolders, Only with prompt, sort button, search-scope button, search box, `hits / total` |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page) |
-| **Footer** | Single / multi-select toggle, selection count, status text, **Caption / Convert** shortcuts (the active tab is highlighted), Copy prompts |
+| **Footer** | **Single / multi-select slider** (click either side and the knob slides over), selection count, status text, **Caption / Convert** shortcuts (the active tab is highlighted), Copy prompts |
 
 ### Adding paths
 
@@ -82,7 +82,7 @@ Paths can be folders, single images, or a mix. The same file reached through sev
 - Click a thumbnail to select/deselect, `Shift + click` to select a range
 - **Sorting**: the sort button in the filter row opens a two-column menu — left picks the **field** (`Name` / `Time` / `Scan order`), right picks the **direction** (`Ascending` / `Descending`). It closes on pick, `Esc`, or a click outside, and the button shows the current sort (e.g. `Time ↓`). File names compare by value (`0002` before `0010`), time is the file's modified time; applies to Gallery, Favorites and Prompts alike, never touches the selection, and is remembered locally
 - **Drag a rectangle with the left button** to select everything it touches (plain drag replaces the selection, `Ctrl / ⌘ / Shift` + drag adds to it); dragging near the top/bottom edge auto-scrolls. Works on the Gallery and Favorites tabs
-- The **Multi / Single** button at the far left of the footer switches modes: Multi accumulates a batch (numbered in click order); Single keeps exactly one image, and clicking it again deselects — `Shift` is ignored in Single. The mode is remembered locally across reloads
+- The **Single / Multi slider** at the far left of the footer switches modes (click either side and the knob slides over): Multi accumulates a batch (numbered in click order); Single keeps exactly one image, and clicking it again deselects — `Shift` is ignored in Single. The mode is remembered locally across reloads
 - In Multi mode, `Ctrl / ⌘ + click` still narrows the selection down to that one image
 - Hover to show the full prompt (title line: `filename · resolution · size`)
 - Hovering also reveals the action group: `⧉` copy this image's prompt / `☆` favorite / `⤢` preview / `🗑` delete
