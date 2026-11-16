@@ -111,6 +111,7 @@ const CSS = `
 
 /* ================================================================ 基础 */
 .lgb-wrap {
+  position: relative;
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -542,6 +543,24 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
 .lgb-folderrow .n {
   color: var(--lg-text-3);
   font-size: 11px;
+}
+
+/* 右下角快捷跳转：反推 / 转换 */
+.lgb-quickjump {
+  position: absolute;
+  right: 10px;
+  bottom: 44px;
+  z-index: 7;
+  display: flex;
+  gap: 6px;
+  pointer-events: none; /* 空隙不挡下面的缩略图 */
+}
+.lgb-quickjump .lgb-btn {
+  pointer-events: auto;
+  box-shadow: var(--lg-shadow-1);
+}
+.lgb-quickjump .lgb-btn:hover {
+  box-shadow: var(--lg-shadow-2);
 }
 
 /* 排序浮层：左栏选依据，右栏选方向 */
@@ -4043,6 +4062,14 @@ app.registerExtension({
 
       syncPickMode();
 
+      // 右下角快捷入口：反推 / 转换（这两个页签上不再显示数量）
+      const quickJump = el("div", "lgb-quickjump");
+      const btnJumpReverse = el("button", "lgb-btn sm", "反推");
+      setTitle(btnJumpReverse, "跳到反推页：对选中的图跑 WD14 / TIPO");
+      const btnJumpConvert = el("button", "lgb-btn sm", "转换");
+      setTitle(btnJumpConvert, "跳到转换压缩页：批量转格式 / 压体积 / 缩放");
+      quickJump.append(btnJumpReverse, btnJumpConvert);
+
       wrap.append(
         head,
         rowAdd,
@@ -4051,6 +4078,7 @@ app.registerExtension({
         pagePrompts,
         pageReverse,
         pageConvert,
+        quickJump,
         rowFoot
       );
 
@@ -5103,10 +5131,8 @@ app.registerExtension({
       }
 
       function updateTabCounts() {
+        // 页签上不再挂数量，数量只留在悬停提示里
         tabFavorites.replaceChildren(tspan("收藏"));
-        if (state.favorites.size) {
-          tabFavorites.append(el("span", "num", String(state.favorites.size)));
-        }
         setTitleT(tabFavorites, "收藏：{n} 张", { n: state.favorites.size });
 
         const orphans = state.orphanPrompts || 0;
@@ -5125,7 +5151,6 @@ app.registerExtension({
         else setTitle(subPrompts, "当前列表没有带提示词的图片");
 
         tabPrompts.replaceChildren(tspan("提示词"));
-        if (total > 0) tabPrompts.append(el("span", "num", String(total)));
         if (total) {
           setTitleT(
             tabPrompts,
@@ -5140,14 +5165,12 @@ app.registerExtension({
 
         const selCount = state.selected.size;
         tabReverse.replaceChildren(tspan("反推"));
-        if (selCount > 0) tabReverse.append(el("span", "num", String(selCount)));
         if (selCount) setTitleT(tabReverse, "反推页：已选 {n} 张", { n: selCount });
         else setTitle(tabReverse, "反推页：先在图库选中图片");
 
         // 转换页：徽标显示待处理张数（有选中按选中，否则按当前列表）
         const convTotal = selCount || visibleItems().length;
         tabConvert.replaceChildren(tspan("转换"));
-        if (convTotal > 0) tabConvert.append(el("span", "num", String(convTotal)));
         if (selCount) setTitleT(tabConvert, "转换压缩：已选 {n} 张", { n: selCount });
         else if (convTotal) setTitleT(tabConvert, "转换压缩：当前列表 {n} 张", { n: convTotal });
         else setTitle(tabConvert, "转换压缩：当前列表没有图片");
@@ -5222,6 +5245,8 @@ app.registerExtension({
         // 路径栏（浏览 / 设置 / 刷新 / 回收站）只在能看图的两个页签出现；
         // 提示词页把整块批量删除挪进提示词栏，那里也有一颗「删除选中」
         rowAdd.style.display = isGridView ? "" : "none";
+        // 已经在反推/转换页时不用再摆快捷入口
+        quickJump.style.display = isReverse || isConvert ? "none" : "";
         if (isPrompts) promptBar.append(bulk);
         else if (isGridView) rowAdd.insertBefore(bulk, btnTrash);
         hideTip();
@@ -8949,6 +8974,8 @@ app.registerExtension({
         openFolderPicker([...state.selected.keys()]);
       });
 
+      btnJumpReverse.addEventListener("click", () => switchTab("reverse"));
+      btnJumpConvert.addEventListener("click", () => switchTab("convert"));
       tabGallery.addEventListener("click", () => switchTab("gallery"));
       tabFavorites.addEventListener("click", () => switchTab("favorites"));
       tabReverse.addEventListener("click", () => switchTab("reverse"));

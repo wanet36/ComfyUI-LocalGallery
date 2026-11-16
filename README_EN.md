@@ -56,11 +56,11 @@ Five bands, top to bottom:
 
 | Area | What's there |
 |---|---|
-| **Tab bar** | `Gallery / Favorites N / Prompts N / Caption N / Convert N` plus the "columns" slider |
+| **Tab bar** | `Gallery / Favorites / Prompts / Caption / Convert` (counts live in the tooltip, not on the buttons) plus the "columns" slider |
 | **Path bar** (Gallery / Favorites) | Browse, Settings, ⟳ rescan, Delete prompts, Delete selected, Trash |
 | **Filter row** | Include subfolders, Only with prompt, sort button, search-scope button, search box, `hits / total` |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page) |
-| **Footer** | Single / multi-select toggle, selection count, status text, Select all / Invert / Clear selection / Copy prompts |
+| **Footer** | Single / multi-select toggle, selection count, status text, Select all / Invert / Clear selection / Copy prompts; two floating **Caption / Convert** buttons at the bottom-right jump straight to those tabs |
 
 ### Adding paths
 
