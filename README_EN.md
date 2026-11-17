@@ -57,7 +57,7 @@ Five bands, top to bottom:
 | Area | What's there |
 |---|---|
 | **Tab bar** | `Gallery / Favorites / Prompts / Caption / Convert` (counts live in the tooltip, not on the buttons) plus the "columns" slider |
-| **Path bar** (Gallery / Favorites) | Browse, Settings, ⟳ rescan, the batch group (`Delete selected ▾` / `Select all` / `Clear selection`; on Favorites it becomes `Unfavorite (N)` + `Add to folder (N)`), Trash |
+| **Path bar** (Gallery / Favorites) | Settings (holds the whole *Browse local paths* block: Choose folder / in-panel browser), ⟳ rescan, the batch group (`Delete selected ▾` / `Select all` / `Clear selection`; on Favorites it becomes `Unfavorite (N)` + `Add to folder (N)`), Trash |
 | **Filter row** | Include subfolders, Only with prompt, **Group by day**, sort button, search-scope button, search box, `hits / total` |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page) |
 | **Footer** | **Single / multi-select slider** (click either side and the knob slides over), selection count, status text, **Caption / Convert** shortcuts (the active tab is highlighted), Copy prompts |
@@ -66,11 +66,12 @@ Five bands, top to bottom:
 
 The path list is the only entry point:
 
-- **Browse** (leftmost in the path bar) opens the **native Windows folder picker** (the Explorer-style dialog); hold `Ctrl` to pick several folders at once
+- The entry lives in **Settings (⚙) → Browse local paths**, with two buttons:
+  - **Choose folder…** opens the **native Windows folder picker** (Explorer-style); hold `Ctrl` to pick several folders at once
+  - **In-panel browser** is the slim browser: one row with the **current path** plus **＋ Add this folder**, a **Recent** row, and a single **images** grid — tick some and hit **Add selected**. Added paths sit in that row with `✕` to remove one (no path input, drive list or folder tree; use the system picker to change folders)
 - The dialog appears on the machine **running ComfyUI** — perfect for local use; if ComfyUI lives on a remote server, use the in-panel browser instead
-- The dialog **jumps to the front and flashes the taskbar** when it opens; if it is hidden behind the browser the status bar says "picker is open". Clicking Browse again while it is open only shows a hint instead of opening a second one
-- The **⤢ icon** next to it opens the **slim in-panel browser**: one row with the **current path** plus **＋ Add this folder**, a **Recent** row to hop back to folders you visited, and a single **images** grid — tick some and hit **Add selected**. Added paths sit in the row above with `✕` to remove one (no path input, drive list or folder tree; use the system picker to change folders)
-- If the native picker is unavailable (non-Windows, remote, blocked) the UI falls back to the in-panel browser and says why in the status bar
+- The dialog **jumps to the front and flashes the taskbar** when it opens; if it is hidden behind the browser the status bar says "picker is open". Clicking Choose folder again while it is open only shows a hint
+- If the native picker is unavailable (non-Windows, remote, blocked) the status bar says why — use the in-panel browser or try again
 
 Paths can be folders, single images, or a mix. The same file reached through several paths is only listed once.
 

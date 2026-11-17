@@ -2781,6 +2781,14 @@ const I18N_EN = {
   "选择文件夹或单张图片加入路径列表": "Add folders or images to the path list",
   "重新扫描路径列表": "Rescan the path list",
   "设置：明暗主题、图片反推、收藏导出": "Settings: theme, captioning, favorites export",
+  "浏览本机路径": "Browse local paths",
+  "面板内浏览": "In-panel browser",
+  "打开面板内浏览": "Open in-panel browser",
+  "下钻目录、加单张图片、管理已加入的路径": "Browse folders, add single images, manage added paths",
+  "「选择文件夹」弹 Windows 自带的选择框（可多选），选完直接加进路径列表；「面板内浏览」可以看某个目录里的图片、只加单张、管理已加入的路径。": "Choose folder opens the native Windows picker (multi-select) and adds the result to the path list; the in-panel browser lets you look at one folder, add single images and manage added paths.",
+  "选择文件夹…": "Choose folder…",
+  "选择文件夹": "Choose folder",
+  "弹 Windows 自带的文件夹选择框（按住 Ctrl 可多选），选完加入路径列表": "Opens the native Windows folder picker (hold Ctrl for several); picked folders join the path list",
   "只把同名提示词文件移到回收站，图片保留（可随时恢复）": "Move only prompt files to trash, keep images (restorable)",
   "图片 + 同名提示词一起移到回收站（可随时恢复）": "Move image + prompt file to trash together (restorable)",
   "每行": "Cols",
@@ -2912,8 +2920,8 @@ const I18N_EN = {
   "未知错误": "Unknown error",
   "接口返回异常（HTTP {code}）": "Unexpected response (HTTP {code})",
   "请求太长（HTTP {code}）：路径太多，请分批浏览": "Request too large (HTTP {code}): too many paths in one go — browse in smaller batches",
-  "点「浏览」加一个文件夹开始": "Click Browse to add a folder",
-  "还没有图片 —— 点路径栏的「浏览」加一个文件夹。": "No images yet — use Browse in the path bar to add a folder.",
+  "打开「设置 → 浏览本机路径」加一个文件夹开始": "Open Settings → Browse local paths to add a folder",
+  "还没有图片 —— 打开「设置 → 浏览本机路径」加一个文件夹。": "No images yet — open Settings → Browse local paths to add a folder.",
   "筛出 {a} / {b} 张": "{a} / {b} images",
   "提示词命中 {a} / {b} 张（有提示词 {c} 张）": "{a} / {b} matched ({c} with prompts)",
   "提示词搜索失败：{err}": "Prompt search failed: {err}",
@@ -2947,7 +2955,7 @@ const I18N_EN = {
   "放入收藏夹失败：{err}": "Could not add to folder: {err}",
   "这个收藏夹里还没有图片": "This folder has no images yet",
   "图库里没有带提示词的图片": "No images with prompts in Gallery",
-  "还没有图片 —— 点「浏览」加一个文件夹": "No images yet — click Browse to add a folder",
+  "还没有图片 —— 打开「设置 → 浏览本机路径」加一个文件夹": "No images yet — open Settings → Browse local paths to add a folder",
   "已复制 {n} 条提示词到剪贴板": "{n} prompts copied to clipboard",
   "当前没有可复制的提示词": "Nothing to copy",
   "没有可复制的内容": "Nothing to copy",
@@ -3104,7 +3112,7 @@ const I18N_EN = {
   "选择框已弹出，请在窗口里选文件夹（按住 Ctrl 可多选）": "The picker is open — choose a folder in that window (hold Ctrl to pick several)",
   "选择框已经打开了，请到弹出的窗口里选文件夹（按住 Ctrl 可多选）": "The picker is already open — pick a folder in that window (hold Ctrl for several)",
   "等了 3 分钟没结果：选择框可能被其它窗口挡住了，点任务栏找一下，或再点一次「浏览」": "No result after 3 minutes — the picker may be hidden behind another window. Look for it in the taskbar, or click Browse again",
-  "系统选择框打不开（{err}）：可以再点一次「浏览」，或点右边的 ⤢ 用面板内浏览": "The system picker failed ({err}) — try Browse again, or use the ⤢ in-panel browser",
+  "系统选择框打不开（{err}）：到「设置 → 浏览本机路径」再试一次，或用那里的面板内浏览": "The system picker failed ({err}) — try again from Settings → Browse local paths, or use the in-panel browser there",
   "没有选择文件夹": "No folder selected",
   "已加入 {n} 个文件夹": "Added {n} folder(s)",
   "系统选择框打不开（{err}），改用面板内浏览": "The system picker failed ({err}); switching to the in-panel browser",
@@ -3253,7 +3261,6 @@ const I18N_EN = {
   "取消": "Cancel",
 
   // 浏览本机路径
-  "浏览本机路径": "Browse this computer",
   "可多选图片，也可整目录加入": "Multi-select images, or add the whole folder",
   "跳转": "Go",
   "转到": "Go",
@@ -3330,7 +3337,6 @@ const I18N_EN = {
   "恢复图片时会连同这张图的提示词一起恢复": "Restoring an image also restores its prompt",
 
   // 选择文件夹
-  "选择文件夹": "Choose folder",
   "选这个文件夹": "Use this folder",
   "如 @wanet": "e.g. @wanet",
   "（没有识别到内容，可以手动填）": "(nothing parsed — fill it in manually)",
@@ -4106,13 +4112,6 @@ app.registerExtension({
 
       /* 路径栏：浏览回到主面板，设置收成一个图标 */
       const rowAdd = el("div", "lgb-row lgb-bar");
-      const btnBrowse = el("button", "lgb-btn primary");
-      btnBrowse.append(icon("folder", 14), tspan("浏览"));
-      setTitle(btnBrowse, "用 Windows 系统的文件夹选择框加入文件夹（可多选）");
-      // 面板内浏览：加单张图片 / 管理已加入的路径
-      const btnBrowseApp = el("button", "lgb-btn ic");
-      btnBrowseApp.append(icon("expand"));
-      setTitle(btnBrowseApp, "面板内浏览：加单张图片、管理已加入的路径");
       const btnSettings = el("button", "lgb-btn ic");
       btnSettings.append(icon("gear"));
       setTitle(btnSettings, "设置：明暗主题、图片反推、收藏导出");
@@ -4145,8 +4144,6 @@ app.registerExtension({
       bulk.append(btnUnfav, btnFavFolder, btnDelSel, btnAll, btnNone);
 
       rowAdd.append(
-        btnBrowse,
-        btnBrowseApp,
         btnSettings,
         btnReload,
         el("div", "lgb-head-spacer"),
@@ -5622,7 +5619,7 @@ app.registerExtension({
               "lgb-empty",
               promptEntries().length
                 ? "图库里没有带提示词的图片"
-                : "还没有图片 —— 点「浏览」加一个文件夹"
+                : "还没有图片 —— 打开「设置 → 浏览本机路径」加一个文件夹"
             )
           );
           return;
@@ -7605,7 +7602,37 @@ app.registerExtension({
         // 建好就按当前配置填一遍表单（否则「当前生效：」那行是空的）
         fillCfgForm();
 
-        body.append(secTheme, secFav, secCfg, secAdv, cfgFoot);
+        /* —— 浏览本机路径：原来路径栏那个「浏览」按钮搬到这里 —— */
+        const secBrowse = el("section", "lgb-set-sec");
+        const btnPickDir = el("button", "lgb-btn primary");
+        btnPickDir.append(icon("folder", 13), tspan("选择文件夹…"));
+        setTitle(btnPickDir, "弹 Windows 自带的文件夹选择框（按住 Ctrl 可多选），选完加入路径列表");
+        btnPickDir.addEventListener("click", () => {
+          // 先收起设置，免得两层窗口叠着挡住系统选择框
+          window.removeEventListener("keydown", onKey);
+          closeSettings();
+          pickFolderNative(btnPickDir);
+        });
+        const btnOpenBrowser = el("button", "lgb-btn");
+        btnOpenBrowser.append(icon("expand", 13), tspan("面板内浏览"));
+        setTitle(btnOpenBrowser, "下钻目录、加单张图片、管理已加入的路径");
+        btnOpenBrowser.addEventListener("click", () => {
+          window.removeEventListener("keydown", onKey);
+          closeSettings();
+          openBrowser(getPaths()[0] || "");
+        });
+        secBrowse.append(
+          el("div", "ttl", "浏览本机路径"),
+          rowWith(el("span", "lb", "选择文件夹"), btnPickDir),
+          rowWith(el("span", "lb", "面板内浏览"), btnOpenBrowser),
+          el(
+            "p",
+            "desc",
+            "「选择文件夹」弹 Windows 自带的选择框（可多选），选完直接加进路径列表；「面板内浏览」可以看某个目录里的图片、只加单张、管理已加入的路径。"
+          )
+        );
+
+        body.append(secBrowse, secTheme, secFav, secCfg, secAdv, cfgFoot);
         box.append(headEl, body);
         overlay.append(box);
         document.body.appendChild(overlay);
@@ -9086,7 +9113,7 @@ app.registerExtension({
             ? "正在扫描路径…"
             : getPaths().length
               ? "这些路径下没有图片。检查「含子目录」，或换一个路径。"
-              : "还没有图片 —— 点路径栏的「浏览」加一个文件夹。"));
+              : "还没有图片 —— 打开「设置 → 浏览本机路径」加一个文件夹。"));
           grid.classList.remove("timeline");
           state.columns = [];
           state.tl = null;
@@ -9176,7 +9203,7 @@ app.registerExtension({
               ? state.favorites.size
                 ? "这个收藏夹里还没有图片"
                 : "还没有收藏 —— 在图库里点缩略图左上角的 ☆ 收藏"
-              : "还没有图片 —— 点「浏览」加一个文件夹"
+              : "还没有图片 —— 打开「设置 → 浏览本机路径」加一个文件夹"
           );
           hideTip();
           return;
@@ -9280,14 +9307,14 @@ app.registerExtension({
       // 只是提示「框已经开了」，免得用户以为没反应（以前是直接 return，点几次都没动静）
       let picking = false;
 
-      async function pickFolderNative() {
+      async function pickFolderNative(trigger) {
         if (picking) {
           setStatus("选择框已经打开了，请到弹出的窗口里选文件夹（按住 Ctrl 可多选）");
           return;
         }
         picking = true;
-        // 不 disable：按钮一禁用，用户再点就毫无反应 —— 正是「点了浏览没用」的来源
-        btnBrowse.classList.add("busy");
+        // 不 disable：按钮一禁用，用户再点就毫无反应
+        if (trigger) trigger.classList.add("busy");
         setStatus("正在打开系统文件夹选择框…");
         // 框弹出后要等用户操作，这里补一句提示，不然一直卡在「正在打开…」
         const hintTimer = setTimeout(() => {
@@ -9319,7 +9346,7 @@ app.registerExtension({
               error: true,
             });
           } else {
-            setStatus("系统选择框打不开（{err}）：可以再点一次「浏览」，或点右边的 ⤢ 用面板内浏览", {
+            setStatus("系统选择框打不开（{err}）：到「设置 → 浏览本机路径」再试一次，或用那里的面板内浏览", {
               error: true,
               vars: { err: err.message || err },
             });
@@ -9328,7 +9355,7 @@ app.registerExtension({
           clearTimeout(guard);
           clearTimeout(hintTimer);
           picking = false;
-          btnBrowse.classList.remove("busy");
+          if (trigger) trigger.classList.remove("busy");
         }
       }
 
@@ -9518,8 +9545,6 @@ app.registerExtension({
         load(currentPath);
       }
       /* ---------------- 事件 ---------------- */
-      btnBrowse.addEventListener("click", () => pickFolderNative());
-      btnBrowseApp.addEventListener("click", () => openBrowser(getPaths()[0] || ""));
       btnSettings.addEventListener("click", () => openSettings());
       btnTrash.addEventListener("click", () => openTrash());
       btnDelSel.addEventListener("click", () => {
@@ -9699,7 +9724,7 @@ app.registerExtension({
         setTimeout(() => refresh({ silent: true }), 150);
       } else {
         renderGrid();
-        setStatus("点「浏览」加一个文件夹开始");
+        setStatus("打开「设置 → 浏览本机路径」加一个文件夹开始");
         // 浏览器里没有记录（换浏览器 / 不同源）时，再向后端要一次
         if (shouldAskServer()) setTimeout(() => restorePathsFromServer(), 120);
       }
