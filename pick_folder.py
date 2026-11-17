@@ -14,6 +14,8 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
+import time
 
 FOS_PICKFOLDERS = 0x20
 FOS_FORCEFILESYSTEM = 0x40
@@ -25,6 +27,64 @@ CLSID_FILE_OPEN_DIALOG = "{DC1C5A9C-E88A-4dde-A5A1-60F82A20AEF7}"
 IID_IFILE_OPEN_DIALOG = "{d57c7288-d4ad-4768-be02-9d969532d960}"
 
 ERROR_CANCELLED = -2147023673  # 0x800704C7
+
+
+def _bring_to_front(title: str, seconds: float = 10.0) -> None:
+    """Show() 会阻塞，另起线程把对话框提到最前 + 闪任务栏。
+
+    不这么做的话，主窗口（浏览器）正好在前台时对话框可能被盖在下面，
+    用户看着就像「点了浏览没反应」。
+    """
+
+    def worker() -> None:
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            user32 = ctypes.WinDLL("user32", use_last_error=True)
+            user32.FindWindowW.restype = wintypes.HWND
+            user32.FindWindowW.argtypes = [wintypes.LPCWSTR, wintypes.LPCWSTR]
+            user32.GetForegroundWindow.restype = wintypes.HWND
+
+            class FLASHWINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", wintypes.UINT),
+                    ("hwnd", wintypes.HWND),
+                    ("dwFlags", wintypes.DWORD),
+                    ("uCount", wintypes.UINT),
+                    ("dwTimeout", wintypes.DWORD),
+                ]
+
+            SWP_NOSIZE = 0x0001
+            SWP_NOMOVE = 0x0002
+            SWP_NOACTIVATE = 0x0010
+            HWND_TOPMOST = wintypes.HWND(-1)
+            HWND_NOTOPMOST = wintypes.HWND(-2)
+            FLASHW_ALL = 0x00000003
+            FLASHW_TIMERNOFG = 0x0000000C
+
+            deadline = time.time() + seconds
+            while time.time() < deadline:
+                hwnd = user32.FindWindowW(None, title)
+                if hwnd:
+                    # 先压到最上层（不需要前台权限），再还给普通层级，避免永久置顶
+                    user32.SetWindowPos(hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE)
+                    user32.SetWindowPos(
+                        hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE
+                    )
+                    if user32.GetForegroundWindow() != hwnd:
+                        user32.SetForegroundWindow(hwnd)
+                    info = FLASHWINFO(
+                        ctypes.sizeof(FLASHWINFO), hwnd, FLASHW_ALL | FLASHW_TIMERNOFG, 3, 0
+                    )
+                    user32.FlashWindowEx(ctypes.byref(info))
+                    return
+                time.sleep(0.1)
+        except Exception:
+            # 置顶只是锦上添花，失败也不影响选目录
+            pass
+
+    threading.Thread(target=worker, daemon=True).start()
 
 
 def _pick_com(initial: str = "") -> list[str]:
@@ -91,6 +151,8 @@ def _pick_com(initial: str = "") -> list[str]:
         method(dialog, 17, wintypes.LPCWSTR)(dialog, title)
         ok_label = ctypes.c_wchar_p("加入图库")
         method(dialog, 18, wintypes.LPCWSTR)(dialog, ok_label)
+
+        _bring_to_front("选择要加入图库的文件夹（可多选）")
 
         owner = user32.GetForegroundWindow()
         hr = method(dialog, 3, wintypes.HWND)(dialog, owner)

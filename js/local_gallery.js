@@ -398,6 +398,12 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   background: var(--lg-hover);
   border-color: var(--lg-line);
 }
+/* 系统选择框开着时「浏览」的等待态（不禁用，再点会提示框已经开了） */
+:is(.lgb-wrap, .lgb-overlay) .lgb-btn.busy {
+  opacity: 0.7;
+  cursor: progress;
+}
+
 /* 单选 / 多选：滑块开关。滑块宽度由 JS 按当前标签实测，中英文切换都不错位 */
 :is(.lgb-wrap, .lgb-overlay) .lgb-switch {
   position: relative;
@@ -3095,6 +3101,10 @@ const I18N_EN = {
   "用 Windows 系统的文件夹选择框加入文件夹（可多选）": "Add folders with the Windows folder picker (multi-select)",
   "面板内浏览：加单张图片、管理已加入的路径": "In-panel browser: add single images and manage paths",
   "正在打开系统文件夹选择框…": "Opening the system folder picker…",
+  "选择框已弹出，请在窗口里选文件夹（按住 Ctrl 可多选）": "The picker is open — choose a folder in that window (hold Ctrl to pick several)",
+  "选择框已经打开了，请到弹出的窗口里选文件夹（按住 Ctrl 可多选）": "The picker is already open — pick a folder in that window (hold Ctrl for several)",
+  "等了 3 分钟没结果：选择框可能被其它窗口挡住了，点任务栏找一下，或再点一次「浏览」": "No result after 3 minutes — the picker may be hidden behind another window. Look for it in the taskbar, or click Browse again",
+  "系统选择框打不开（{err}）：可以再点一次「浏览」，或点右边的 ⤢ 用面板内浏览": "The system picker failed ({err}) — try Browse again, or use the ⤢ in-panel browser",
   "没有选择文件夹": "No folder selected",
   "已加入 {n} 个文件夹": "Added {n} folder(s)",
   "系统选择框打不开（{err}），改用面板内浏览": "The system picker failed ({err}); switching to the in-panel browser",
@@ -9266,15 +9276,32 @@ app.registerExtension({
 
       /* ---------------- 系统文件夹选择框 ---------------- */
       // Windows 自带的选择框（服务端弹），选完直接把目录加进路径列表
+      // 选择框是服务端弹的，Show() 会一直挂到用户选完 —— 这期间按钮还允许点，
+      // 只是提示「框已经开了」，免得用户以为没反应（以前是直接 return，点几次都没动静）
+      let picking = false;
+
       async function pickFolderNative() {
-        if (btnBrowse.disabled) return;
-        btnBrowse.disabled = true;
+        if (picking) {
+          setStatus("选择框已经打开了，请到弹出的窗口里选文件夹（按住 Ctrl 可多选）");
+          return;
+        }
+        picking = true;
+        // 不 disable：按钮一禁用，用户再点就毫无反应 —— 正是「点了浏览没用」的来源
+        btnBrowse.classList.add("busy");
         setStatus("正在打开系统文件夹选择框…");
+        // 框弹出后要等用户操作，这里补一句提示，不然一直卡在「正在打开…」
+        const hintTimer = setTimeout(() => {
+          if (picking) setStatus("选择框已弹出，请在窗口里选文件夹（按住 Ctrl 可多选）");
+        }, 1500);
+        // 服务端那边 dialog.Show() 最长会挂 5 分钟；这里 3 分钟就放手，避免按钮一直「禁用」
+        const ctrl = typeof AbortController === "function" ? new AbortController() : null;
+        const guard = ctrl ? setTimeout(() => ctrl.abort(), 180000) : null;
         try {
           const data = await apiJson("/local_gallery/pick_folder", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ initial: getPaths()[0] || "" }),
+            signal: ctrl ? ctrl.signal : undefined,
           });
           const picked = Array.isArray(data.paths) ? data.paths.filter(Boolean) : [];
           if (!picked.length) {
@@ -9286,13 +9313,22 @@ app.registerExtension({
           await refresh();
           setStatus("已加入 {n} 个文件夹", { vars: { n: picked.length } });
         } catch (err) {
-          setStatus("系统选择框打不开（{err}），改用面板内浏览", {
-            error: true,
-            vars: { err: err.message || err },
-          });
-          openBrowser(getPaths()[0] || "");
+          const aborted = err && (err.name === "AbortError" || /abort/i.test(String(err.message || "")));
+          if (aborted) {
+            setStatus("等了 3 分钟没结果：选择框可能被其它窗口挡住了，点任务栏找一下，或再点一次「浏览」", {
+              error: true,
+            });
+          } else {
+            setStatus("系统选择框打不开（{err}）：可以再点一次「浏览」，或点右边的 ⤢ 用面板内浏览", {
+              error: true,
+              vars: { err: err.message || err },
+            });
+          }
         } finally {
-          btnBrowse.disabled = false;
+          clearTimeout(guard);
+          clearTimeout(hintTimer);
+          picking = false;
+          btnBrowse.classList.remove("busy");
         }
       }
 
