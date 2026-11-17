@@ -2793,6 +2793,9 @@ const I18N_EN = {
   "设置：明暗主题、图片反推、收藏导出": "Settings: theme, captioning, favorites export",
   "浏览本机路径": "Browse local paths",
   "面板内浏览": "In-panel browser",
+  "扫描": "Scan",
+  "连路径下的子文件夹一起扫描": "Also scan subfolders under each path",
+  "只列出有同名 .txt 提示词的图片": "Only list images that have a matching .txt prompt",
   "打开面板内浏览": "Open in-panel browser",
   "下钻目录、加单张图片、管理已加入的路径": "Browse folders, add single images, manage added paths",
   "「选择文件夹」弹 Windows 自带的选择框（可多选），选完直接加进路径列表；「面板内浏览」可以看某个目录里的图片、只加单张、管理已加入的路径。": "Choose folder opens the native Windows picker (multi-select) and adds the result to the path list; the in-panel browser lets you look at one folder, add single images and manage added paths.",
@@ -2896,7 +2899,7 @@ const I18N_EN = {
   "反推失败：{err}": "Captioning failed: {err}",
   "已停止 · 完成 {n} 张": "Stopped · {n} done",
   "完成 {n} 张 · 用时 {s}s": "{n} done · {s}s",
-  "这些路径下没有图片。检查「含子目录」，或换一个路径。": "No images under these paths. Check “Include subfolders” or try another path.",
+  "这些路径下没有图片。到「设置 → 浏览本机路径」勾上「含子目录」，或换一个路径。": "No images under these paths. Tick “Include subfolders” in Settings → Browse local paths, or try another path.",
   "已加入输出目录：{dir}": "Output folder added: {dir}",
   "转换任务还在跑，等它结束或先点「取消任务」": "A conversion is still running — wait or cancel it first",
   "先选一个输出文件夹": "Pick an output folder first",
@@ -2965,7 +2968,6 @@ const I18N_EN = {
   "全部收藏（{n} 张）": "All favorites ({n})",
   "未分类（{n} 张）": "Unfiled ({n})",
   "{name}（{n} 张）": "{name} ({n})",
-  "导出收藏 ({n})": "Export favorites ({n})",
   "这个范围里没有图片": "Nothing in this scope",
   "把这一范围里的收藏图片和同名提示词复制过去": "Copy the favorited images in this scope and their prompts",
   "把收藏的图片和同名提示词「复制」到这个文件夹，原文件不动；同名文件默认跳过，不覆盖。导出范围可以只选某一个收藏夹。": "Copies favorited images and their prompts into this folder — originals untouched, existing files skipped (never overwritten). The scope can be a single favorite folder.",
@@ -4205,9 +4207,8 @@ app.registerExtension({
       // 按时间分组：把缩略图按文件修改时间「一天一坨」
       const btnGroup = el("button", "lgb-mode", "时间分组");
       btnGroup.addEventListener("click", () => applyTimeGroup(!state.timeGroup));
+      // 「含子目录 / 仅有提示词」收进设置，这里只留视图相关的筛选
       filters.append(
-        recursiveChk.label,
-        onlyPromptChk.label,
         btnGroup,
         el("div", "lgb-head-spacer"),
         sortModeBtn,
@@ -7732,14 +7733,29 @@ app.registerExtension({
           closeSettings();
           openBrowser(getPaths()[0] || "");
         });
+        /* 扫描范围：原来在筛选行的两个复选框 */
+        const chkRecursive = mkCheck("含子目录", recursiveChk.input.checked);
+        setTitle(chkRecursive.label, "连路径下的子文件夹一起扫描");
+        chkRecursive.input.addEventListener("change", () => {
+          recursiveChk.input.checked = chkRecursive.input.checked;
+          refresh();
+        });
+        const chkOnlyPrompt = mkCheck("仅有提示词", onlyPromptChk.input.checked);
+        setTitle(chkOnlyPrompt.label, "只列出有同名 .txt 提示词的图片");
+        chkOnlyPrompt.input.addEventListener("change", () => {
+          onlyPromptChk.input.checked = chkOnlyPrompt.input.checked;
+          refresh();
+        });
+
         secBrowse.append(
           el("div", "ttl", "浏览本机路径"),
           rowWith(el("span", "lb", "选择文件夹"), btnPickDir),
           rowWith(el("span", "lb", "面板内浏览"), btnOpenBrowser),
+          rowWith(el("span", "lb", "扫描"), chkRecursive.label, chkOnlyPrompt.label),
           el(
             "p",
             "desc",
-            "「选择文件夹」弹 Windows 自带的选择框（可多选），选完直接加进路径列表；「面板内浏览」可以看某个目录里的图片、只加单张、管理已加入的路径。"
+            "「选择文件夹」弹 Windows 自带的选择框（可多选），选完直接加进路径列表；「面板内浏览」可以看某个目录里的图片、只加单张、管理已加入的路径。「含子目录」连子文件夹一起扫，「仅有提示词」只列有同名 .txt 的图。"
           )
         );
 
@@ -9256,7 +9272,7 @@ app.registerExtension({
           grid.replaceChildren(el("div", "lgb-empty", state.busy
             ? "正在扫描路径…"
             : getPaths().length
-              ? "这些路径下没有图片。检查「含子目录」，或换一个路径。"
+              ? "这些路径下没有图片。到「设置 → 浏览本机路径」勾上「含子目录」，或换一个路径。"
               : "还没有图片 —— 打开「设置 → 浏览本机路径」加一个文件夹。"));
           grid.classList.remove("timeline");
           state.columns = [];
