@@ -614,6 +614,85 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   opacity: 0.45;
 }
 
+/* 时间分组（图库页）：一天一坨，组标题吸顶 */
+.lgb-grid.timeline {
+  display: block;
+}
+.lgb-tgroup + .lgb-tgroup {
+  margin-top: 12px;
+}
+:is(.lgb-wrap, .lgb-overlay) button.lgb-tgroup-head {
+  position: sticky;
+  top: -6px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  width: 100%;
+  height: 26px;
+  margin: 0 0 6px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--lg-r-sm);
+  /* 和滚动容器同色，吸顶时把下面的缩略图盖住 */
+  background: var(--lg-sunken);
+  color: var(--lg-text-2);
+  font-family: inherit;
+  font-size: 11.5px;
+  text-align: left;
+  cursor: pointer;
+  user-select: none;
+}
+:is(.lgb-wrap, .lgb-overlay) button.lgb-tgroup-head:hover {
+  color: var(--lg-text);
+  background: var(--lg-hover);
+}
+.lgb-tgroup-head .arw {
+  flex: 0 0 auto;
+  width: 10px;
+  font-size: 9px;
+  color: var(--lg-text-3);
+  transition: transform var(--lg-dur);
+}
+.lgb-tgroup.collapsed .lgb-tgroup-head .arw {
+  transform: rotate(-90deg);
+}
+.lgb-tgroup-head .t {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--lg-text);
+}
+.lgb-tgroup-head .n {
+  flex: 0 0 auto;
+  color: var(--lg-text-3);
+  font-size: 10.5px;
+}
+.lgb-tgroup-head .grow {
+  flex: 1 1 auto;
+  min-width: 8px;
+  height: 1px;
+  margin: 0 2px;
+  background: var(--lg-line);
+}
+.lgb-tgroup-head .dfull {
+  flex: 0 0 auto;
+  color: var(--lg-text-3);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.lgb-tgroup-grid {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  width: 100%;
+}
+.lgb-tgroup.collapsed .lgb-tgroup-grid {
+  display: none;
+}
+.lgb-tgroup.collapsed .lgb-tgroup-head {
+  margin-bottom: 0;
+}
+
 /* 排序浮层：左栏选依据，右栏选方向 */
 .lgb-sortmenu {
   position: fixed;
@@ -3038,6 +3117,16 @@ const I18N_EN = {
   "从小到大 / 从旧到新": "A→Z / oldest first",
   "从大到小 / 从新到旧": "Z→A / newest first",
   "排序：点开选「名称 / 时间」和「顺序 / 倒序」": "Sort: pick name/time and ascending/descending",
+  "时间分组": "Group by day",
+  "{n} 张": "{n} items",
+  "今天": "Today",
+  "昨天": "Yesterday",
+  "前天": "Two days ago",
+  "未知时间": "Unknown time",
+  "点一下折叠 / 展开这一天": "Click to collapse / expand this day",
+  "这些图读不到修改时间": "No modified time available for these images",
+  "按文件修改时间分组：一天一坨，点组标题可折叠": "Group by modified time: one block per day, click a header to collapse",
+  "已按修改时间分组：点组标题可折叠，再点这里关掉分组": "Grouped by modified time: click a header to collapse, click here to turn grouping off",
   "扫描顺序（目录里的原始顺序）": "Scan order (as found on disk)",
   "文件名从小到大（数字按数值比，2 在 10 前面）": "File name A→Z (numbers by value: 2 before 10)",
   "文件名从大到小": "File name Z→A",
@@ -3702,6 +3791,10 @@ app.registerExtension({
         searchMode: "name",
         // 排序：default / name-asc / name-desc / time-desc / time-asc
         sortMode: "default",
+        // 图库页按天分组（时间线）：tl 是渲染游标，collapsedDays 记住折叠了哪几天
+        timeGroup: false,
+        tl: null,
+        collapsedDays: new Set(),
         promptHits: null,
         searchSeq: 0,
         // 本次是从 localStorage 接上的路径（用一次就清，避免以后每次刷新都提示）
@@ -4079,9 +4172,13 @@ app.registerExtension({
       sortModeBtn.append(sortLabel, el("span", "caret", "▾"));
       setTitle(sortModeBtn, "排序：点开选「名称 / 时间」和「顺序 / 倒序」");
       const countLabel = el("span", "lgb-count", "—");
+      // 按时间分组：把缩略图按文件修改时间「一天一坨」
+      const btnGroup = el("button", "lgb-mode", "时间分组");
+      btnGroup.addEventListener("click", () => applyTimeGroup(!state.timeGroup));
       filters.append(
         recursiveChk.label,
         onlyPromptChk.label,
+        btnGroup,
         el("div", "lgb-head-spacer"),
         sortModeBtn,
         searchBox,
@@ -5334,6 +5431,10 @@ app.registerExtension({
         paintSelection();
         syncConvertPage();
         renderChips();
+        // 「今天 / 昨天」这类组标题是渲染时生成的，切语言要重画一遍
+        state.tl = null;
+        state.rendered = 0;
+        renderGrid();
         if (activeTab === "prompts") {
           if (promptMode === "orphans") renderOrphans({ reset: true });
           else renderPrompts({ reset: true });
@@ -8112,6 +8213,7 @@ app.registerExtension({
       ];
 
       const SORT_KEY = "localGalleryBrowser.sort";
+      const GROUP_KEY = "localGalleryBrowser.timeGroup";
 
       // 文件名比较：带数字的按数值比，避免 0010 排在 0002 前面
       function compareByName(a, b) {
@@ -8662,20 +8764,179 @@ app.registerExtension({
       const COL_GAP = 8;
       const GRID_PAD = 6;
 
-      function resetColumns(itemCount = 0) {
-        grid.replaceChildren();
-        state.columns = [];
+      /* 在容器里铺 N 列瀑布流（时间分组的每组也用它） */
+      function makeColumns(container, itemCount = 0, colCount = 0) {
         const gap = COL_GAP;
+        const want = colCount > 0 ? colCount : cols;
         // 图片比目标列数还少时，按图片数分列，避免切出一堆空列把图挤小
-        const useCols = Math.max(1, itemCount > 0 ? Math.min(cols, itemCount) : cols);
+        const useCols = Math.max(1, itemCount > 0 ? Math.min(want, itemCount) : want);
         const usable = Math.max(160, (gridScroll.clientWidth || 600) - GRID_PAD * 2);
         const colW = Math.max(40, (usable - gap * (useCols - 1)) / useCols);
-        grid.classList.toggle("compact", colW < 96);
+        container.classList.toggle("compact", colW < 96);
+        const columns = [];
         for (let i = 0; i < useCols; i += 1) {
           const col = el("div", "lgb-col");
-          grid.append(col);
-          state.columns.push({ el: col, width: colW, height: 0 });
+          container.append(col);
+          columns.push({ el: col, width: colW, height: 0 });
         }
+        return columns;
+      }
+
+      function resetColumns(itemCount = 0) {
+        grid.replaceChildren();
+        grid.classList.remove("timeline");
+        state.columns = makeColumns(grid, itemCount);
+      }
+
+      /* ---------------- 按天分组（时间线） ---------------- */
+      function dayKeyOf(ts) {
+        const n = Number(ts) || 0;
+        if (!n) return "";
+        const d = new Date(n * 1000);
+        if (Number.isNaN(d.getTime())) return "";
+        const p = (v) => String(v).padStart(2, "0");
+        return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+      }
+
+      /* 今天 / 昨天 / 前天 / 11 月 10 日 / 2025 年 12 月 30 日（英文界面走 ISO 短格式） */
+      function dayLabelOf(key) {
+        if (!key) return "未知时间";
+        const [y, m, d] = key.split("-").map(Number);
+        const now = new Date();
+        const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const diff = Math.round((today - new Date(y, m - 1, d)) / 86400000);
+        if (diff === 0) return "今天";
+        if (diff === 1) return "昨天";
+        if (diff === 2) return "前天";
+        if (lang === "en") {
+          const p = (v) => String(v).padStart(2, "0");
+          return y === now.getFullYear() ? `${p(m)}-${p(d)}` : `${y}-${p(m)}-${p(d)}`;
+        }
+        return y === now.getFullYear() ? `${m} 月 ${d} 日` : `${y} 年 ${m} 月 ${d} 日`;
+      }
+
+      /* 把当前列表按天切堆：组按日期新→旧（选「时间 ↑」时反过来），未知时间垫底 */
+      function buildDayGroups(items) {
+        const map = new Map();
+        items.forEach((item, index) => {
+          const key = dayKeyOf(item.mtime);
+          let bucket = map.get(key);
+          if (!bucket) {
+            bucket = { key, label: dayLabelOf(key), entries: [] };
+            map.set(key, bucket);
+          }
+          bucket.entries.push({ item, index });
+        });
+        const list = [...map.values()];
+        const asc = state.sortMode === "time-asc";
+        list.sort((a, b) => {
+          if (!a.key) return 1;
+          if (!b.key) return -1;
+          return asc ? a.key.localeCompare(b.key) : b.key.localeCompare(a.key);
+        });
+        return list;
+      }
+
+      function shortestOf(columns) {
+        let target = columns[0];
+        for (const col of columns) {
+          if (col.height < target.height) target = col;
+        }
+        return target;
+      }
+
+      function createDayBlock(group, colCount) {
+        const box = el("div", "lgb-tgroup");
+        box.dataset.day = group.key || "unknown";
+        const head = el("button", "lgb-tgroup-head");
+        head.type = "button";
+        head.append(
+          el("span", "arw", "▾"),
+          el("span", "t", group.label),
+          elTpl("span", "n", "{n} 张", { n: group.entries.length }),
+          el("span", "grow")
+        );
+        setTitle(head, group.key ? "点一下折叠 / 展开这一天" : "这些图读不到修改时间");
+        if (state.collapsedDays.has(group.key)) box.classList.add("collapsed");
+        head.addEventListener("click", () => {
+          const collapsed = !box.classList.contains("collapsed");
+          box.classList.toggle("collapsed", collapsed);
+          if (collapsed) state.collapsedDays.add(group.key);
+          else state.collapsedDays.delete(group.key);
+        });
+        // body 也带 lgb-grid 类：compact（列太窄时收按钮）那套样式才生效
+        const body = el("div", "lgb-grid lgb-tgroup-grid");
+        box.append(head, body);
+        return { el: box, head, body, columns: makeColumns(body, 0, colCount) };
+      }
+
+      /* 时间线渲染：逐组、逐批，滚到哪画到哪；折叠只改 CSS，不丢已画好的图 */
+      function renderTimeline(items, reset) {
+        if (reset || !state.tl || state.tl.total !== items.length) {
+          state.tl = {
+            list: buildDayGroups(items),
+            blocks: new Map(),
+            gi: 0,
+            offset: 0,
+            total: items.length,
+          };
+          // 各组统一列数：跨组列宽才对得上；同时不超过最大组的张数，免得空列太多
+          const maxPerDay = state.tl.list.reduce((m, g) => Math.max(m, g.entries.length), 0);
+          state.tl.colCount = Math.max(1, Math.min(cols, maxPerDay || cols));
+          grid.replaceChildren();
+          state.columns = [];
+          state.rendered = 0;
+        }
+        grid.classList.add("timeline");
+        const tl = state.tl;
+        let budget = PAGE_SIZE;
+        while (budget > 0 && tl.gi < tl.list.length) {
+          const group = tl.list[tl.gi];
+          let block = tl.blocks.get(group.key);
+          if (!block) {
+            block = createDayBlock(group, tl.colCount);
+            tl.blocks.set(group.key, block);
+            grid.append(block.el);
+          }
+          const take = Math.min(budget, group.entries.length - tl.offset);
+          for (let k = 0; k < take; k += 1) {
+            const { item, index } = group.entries[tl.offset + k];
+            const col = shortestOf(block.columns);
+            col.el.append(buildItem(item, index));
+            const ratio = item.width && item.height ? item.height / item.width : 1;
+            col.height += col.width * ratio + COL_GAP;
+          }
+          tl.offset += take;
+          budget -= take;
+          state.rendered += take;
+          if (tl.offset >= group.entries.length) {
+            tl.gi += 1;
+            tl.offset = 0;
+          }
+        }
+      }
+
+      function applyTimeGroup(on, { persist = true, rerender = true } = {}) {
+        state.timeGroup = !!on;
+        btnGroup.classList.toggle("primary", state.timeGroup);
+        setTitle(
+          btnGroup,
+          state.timeGroup
+            ? "已按修改时间分组：点组标题可折叠，再点这里关掉分组"
+            : "按文件修改时间分组：一天一坨，点组标题可折叠"
+        );
+        if (persist) {
+          try {
+            localStorage.setItem(GROUP_KEY, state.timeGroup ? "1" : "0");
+          } catch (err) {
+            /* 忽略 */
+          }
+        }
+        if (!rerender) return;
+        state.rendered = 0;
+        state.tl = null;
+        gridScroll.scrollTop = 0;
+        renderGrid();
       }
 
       function shortestColumn() {
@@ -8798,13 +9059,6 @@ app.registerExtension({
         const items = visibleItems();
         // 只有图库页的渲染结果才是提示词页的依据
         if (state.source === "paths") state.galleryVisible = items;
-        if (reset) {
-          resetColumns(items.length);
-          state.rendered = 0;
-        } else if (!state.columns.length) {
-          resetColumns(items.length);
-          state.rendered = 0;
-        }
 
         if (state.items.length) {
           setTpl(countLabel, "{a} / {b} 张{done}", {
@@ -8823,9 +9077,28 @@ app.registerExtension({
             : getPaths().length
               ? "这些路径下没有图片。检查「含子目录」，或换一个路径。"
               : "还没有图片 —— 点路径栏的「浏览」加一个文件夹。"));
+          grid.classList.remove("timeline");
           state.columns = [];
+          state.tl = null;
           paintSelection();
           return;
+        }
+
+        // 图库页开了「时间分组」：自己管列，不能走 resetColumns
+        // （那套会在 reset=false 时把已经画好的组清空，只剩后面几组）
+        if (state.timeGroup && activeTab === "gallery") {
+          renderTimeline(items, reset);
+          paintSelection();
+          fillViewport();
+          return;
+        }
+
+        if (reset) {
+          resetColumns(items.length);
+          state.rendered = 0;
+        } else if (!state.columns.length) {
+          resetColumns(items.length);
+          state.rendered = 0;
         }
 
         const slice = items.slice(state.rendered, state.rendered + PAGE_SIZE);
@@ -9368,6 +9641,7 @@ app.registerExtension({
       try {
         const savedSort = localStorage.getItem(SORT_KEY);
         if (SORT_MODES.some((m) => m.key === savedSort)) state.sortMode = savedSort;
+        if (localStorage.getItem(GROUP_KEY) === "1") state.timeGroup = true;
       } catch (err) {
         /* 忽略 */
       }

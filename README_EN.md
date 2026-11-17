@@ -58,7 +58,7 @@ Five bands, top to bottom:
 |---|---|
 | **Tab bar** | `Gallery / Favorites / Prompts / Caption / Convert` (counts live in the tooltip, not on the buttons) plus the "columns" slider |
 | **Path bar** (Gallery / Favorites) | Browse, Settings, ⟳ rescan, the batch group (`Delete selected ▾` / `Select all` / `Clear selection`; on Favorites it becomes `Unfavorite (N)` + `Add to folder (N)`), Trash |
-| **Filter row** | Include subfolders, Only with prompt, sort button, search-scope button, search box, `hits / total` |
+| **Filter row** | Include subfolders, Only with prompt, **Group by day**, sort button, search-scope button, search box, `hits / total` |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page) |
 | **Footer** | **Single / multi-select slider** (click either side and the knob slides over), selection count, status text, **Caption / Convert** shortcuts (the active tab is highlighted), Copy prompts |
 
@@ -80,6 +80,7 @@ Paths can be folders, single images, or a mix. The same file reached through sev
 <img src="docs/hover.jpg" width="500" alt="Hover to read the prompt">
 
 - Click a thumbnail to select/deselect, `Shift + click` to select a range
+- **Group by day**: the `Group by day` button in the filter row stacks thumbnails by **modified time**, one block per day (`Today` / `Yesterday` / `11-12` …). Headers show the count, stick to the top while scrolling, and collapse on click; columns stay aligned across blocks and each block is still a waterfall. Selecting, marquee, select-all and delete keep working. Remembered locally
 - **Sorting**: the sort button in the filter row opens a two-column menu — left picks the **field** (`Name` / `Time` / `Scan order`), right picks the **direction** (`Ascending` / `Descending`). It closes on pick, `Esc`, or a click outside, and the button shows the current sort (e.g. `Time ↓`). File names compare by value (`0002` before `0010`), time is the file's modified time; applies to Gallery, Favorites and Prompts alike, never touches the selection, and is remembered locally
 - **Drag a rectangle with the left button** to select everything it touches (plain drag replaces the selection, `Ctrl / ⌘ / Shift` + drag adds to it); dragging near the top/bottom edge auto-scrolls. Works on the Gallery and Favorites tabs
 - The **Single / Multi slider** at the far left of the footer switches modes (click either side and the knob slides over): Multi accumulates a batch (numbered in click order); Single keeps exactly one image, and clicking it again deselects — `Shift` is ignored in Single. The mode is remembered locally across reloads
