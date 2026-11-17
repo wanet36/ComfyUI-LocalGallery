@@ -919,8 +919,12 @@ def register_routes() -> bool:
             body = {}
         dest = str(body.get("dest") or "").strip()
         overwrite = bool(body.get("overwrite"))
+        # folder: all（默认）/ none（未分类）/ 收藏夹 id
+        folder = str(body.get("folder") or "all").strip() or "all"
         loop = asyncio.get_running_loop()
-        data = await loop.run_in_executor(None, export_favorites, dest, overwrite)
+        data = await loop.run_in_executor(
+            None, lambda: export_favorites(dest, overwrite, folder)
+        )
         return web.json_response(data, status=200 if data.get("ok") else 400)
 
     # ------------------------------------------------------- 上次用过的路径

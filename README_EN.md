@@ -129,6 +129,7 @@ Aggregates favorites across folders, independent of the current path list.
 - Preview, hover, viewer and delete behave exactly like the Gallery tab
 - Deleting an image removes it from favorites, so no dead links
 - Settings → **Favorites** can **export**: copies favorited images and prompts into a folder (existing files are skipped, never overwritten)
+- The export **scope** can be `All favorites` / `Unfiled` / a single folder — the dropdown shows counts and the button number follows it (greyed out when the scope is empty)
 - **Favorite folders**: a chip row at the top of the Favorites tab — `All` / `Unfiled` / each folder / `+ New folder`. Clicking one filters the grid to that folder
 - An image can live in several folders; duplicate names are rejected and names are capped at 40 characters
 - **Bulk add**: select images in Gallery or Favorites → **Add to folder (N)** in the path bar → pick a folder (or create one right there). Images that were not favorited get favorited automatically
@@ -358,7 +359,7 @@ Every field is also editable from the Settings panel; editing the JSON by hand w
 | POST | `/local_gallery/search` `{"files":[...],"q":"a b"}` | Search prompts in the current list |
 | GET | `/local_gallery/favorites` | Favorites, newest first |
 | POST | `/local_gallery/favorites` `{"paths":[...],"action":"add\|remove\|toggle"}` | Toggle favorites |
-| POST | `/local_gallery/favorites/export` `{"dest":"...","overwrite":false}` | Export favorites |
+| POST | `/local_gallery/favorites/export` `{"dest":"...","overwrite":false,"folder":"all"}` | Export favorites; `folder` accepts `all` / `none` / a folder id to narrow the scope |
 | GET | `/local_gallery/favorites/folders` | Folder list with per-folder and unfiled counts |
 | POST | `/local_gallery/favorites/folders` `{"name":"landscape"}` | Create a folder (duplicate names rejected) |
 | POST | `/local_gallery/favorites/folders/delete` `{"id":"f..."}` | Delete a folder (images stay favorited) |

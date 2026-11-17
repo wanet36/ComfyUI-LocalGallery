@@ -2960,6 +2960,15 @@ const I18N_EN = {
   "不分类，直接收藏": "Just favorite (no folder)",
   "把「{name}」收藏起来，顺便选个分类；不选就是未分类。": "Favorite \"{name}\" — pick a folder, or skip it to keep it unfiled.",
   "已收藏到「{name}」": "Favorited into \"{name}\"",
+  "导出范围": "Scope",
+  "导出哪些收藏：全部 / 未分类 / 某一个收藏夹": "Which favorites to export: all / unfiled / one folder",
+  "全部收藏（{n} 张）": "All favorites ({n})",
+  "未分类（{n} 张）": "Unfiled ({n})",
+  "{name}（{n} 张）": "{name} ({n})",
+  "导出收藏 ({n})": "Export favorites ({n})",
+  "这个范围里没有图片": "Nothing in this scope",
+  "把这一范围里的收藏图片和同名提示词复制过去": "Copy the favorited images in this scope and their prompts",
+  "把收藏的图片和同名提示词「复制」到这个文件夹，原文件不动；同名文件默认跳过，不覆盖。导出范围可以只选某一个收藏夹。": "Copies favorited images and their prompts into this folder — originals untouched, existing files skipped (never overwritten). The scope can be a single favorite folder.",
   "加入收藏夹 ({n})": "Add to folder ({n})",
   "把选中的图片放进收藏夹（可以顺手新建一个）": "Put the selected images into a favorite folder (create one on the spot)",
   "先选中图片再放进收藏夹": "Select some images first",
@@ -7368,6 +7377,50 @@ app.registerExtension({
         const favRow = el("div", "lgb-set-row");
         favRow.append(el("span", "lb", "目标文件夹"), favInput, btnPickFav);
 
+        /* 导出范围：全部 / 未分类 / 某个收藏夹 */
+        const SCOPE_KEY = "localGalleryBrowser.exportScope";
+        let exportScope = "all";
+        try {
+          const saved = localStorage.getItem(SCOPE_KEY);
+          if (saved) exportScope = saved;
+        } catch (err) {
+          /* 忽略 */
+        }
+        const favScopeSel = document.createElement("select");
+        favScopeSel.className = "lgb-set-input";
+        setTitle(favScopeSel, "导出哪些收藏：全部 / 未分类 / 某一个收藏夹");
+
+        function scopeCount(scope) {
+          if (scope === "all") return state.favorites?.size || 0;
+          if (scope === "none") return state.favUnclassified || 0;
+          const hit = (state.folders || []).find((f) => f.id === scope);
+          return hit ? hit.count || 0 : 0;
+        }
+
+        function paintScopeOptions() {
+          const total = state.favorites?.size || 0;
+          const opts = [
+            ["all", t("全部收藏（{n} 张）", { n: total })],
+            ["none", t("未分类（{n} 张）", { n: state.favUnclassified || 0 })],
+            ...(state.folders || []).map((f) => [f.id, t("{name}（{n} 张）", { name: f.name, n: f.count || 0 })]),
+          ];
+          // 选的夹被删了就回到「全部」
+          if (!opts.some(([key]) => key === exportScope)) exportScope = "all";
+          favScopeSel.replaceChildren(
+            ...opts.map(([key, label]) => {
+              const opt = document.createElement("option");
+              opt.value = key;
+              opt.textContent = label;
+              if (key === exportScope) opt.selected = true;
+              return opt;
+            })
+          );
+        }
+        paintScopeOptions();
+
+        const favScopeRow = el("div", "lgb-set-row");
+        favScopeRow.append(el("span", "lb", "导出范围"), favScopeSel);
+
         const btnExportFav = el("button", "lgb-btn primary");
         const favCount = state.favorites?.size || 0;
         btnExportFav.append(icon("save", 13), elTpl("span", "", "导出收藏 ({n})", { n: favCount }));
@@ -7380,6 +7433,32 @@ app.registerExtension({
               ? "先设置目标文件夹"
               : "把收藏的图片和同名提示词复制过去"
         );
+
+        function syncExportBtn() {
+          const n = scopeCount(exportScope);
+          const label = btnExportFav.querySelector("span[data-i18n-tpl]");
+          setTpl(label || btnExportFav, "导出收藏 ({n})", { n });
+          btnExportFav.disabled = !n || !favInput.value.trim();
+          setTitle(
+            btnExportFav,
+            !n
+              ? "这个范围里没有图片"
+              : !favInput.value.trim()
+                ? "先设置目标文件夹"
+                : "把这一范围里的收藏图片和同名提示词复制过去"
+          );
+        }
+        syncExportBtn();
+
+        favScopeSel.addEventListener("change", () => {
+          exportScope = favScopeSel.value;
+          try {
+            localStorage.setItem(SCOPE_KEY, exportScope);
+          } catch (err) {
+            /* 忽略 */
+          }
+          syncExportBtn();
+        });
         const favMsg = el("span", "lgb-set-msg", "");
 
         function saveFavDir() {
@@ -7413,7 +7492,7 @@ app.registerExtension({
             const data = await apiJson("/local_gallery/favorites/export", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ dest, overwrite: false }),
+              body: JSON.stringify({ dest, overwrite: false, folder: exportScope }),
             });
             const copied = (data.copied || []).length;
             const skipped = (data.skipped || []).length;
@@ -7437,7 +7516,12 @@ app.registerExtension({
         secFav.append(
           el("div", "ttl", "收藏"),
           favRow,
-          el("p", "desc", "把收藏的图片和同名提示词「复制」到这个文件夹，原文件不动；同名文件默认跳过，不覆盖。"),
+          favScopeRow,
+          el(
+            "p",
+            "desc",
+            "把收藏的图片和同名提示词「复制」到这个文件夹，原文件不动；同名文件默认跳过，不覆盖。导出范围可以只选某一个收藏夹。"
+          ),
           rowWith(btnExportFav, favMsg)
         );
 

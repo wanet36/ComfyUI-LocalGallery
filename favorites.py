@@ -190,9 +190,10 @@ def favorite_paths() -> list[str]:
     return [row["path"] for row in list_favorites()]
 
 
-def export_favorites(dest: str, overwrite: bool = False) -> dict:
+def export_favorites(dest: str, overwrite: bool = False, folder_id: str = "all") -> dict:
     """把收藏的图片 + 同名提示词复制到 dest（不动原文件）。
 
+    - `folder_id`：`all` 全部收藏 / `none` 未分类 / 其它值 = 只导出该收藏夹里的
     - 同名文件默认跳过，`overwrite=True` 才覆盖
     - 图片没有侧车提示词、但收藏时记过 prompt 的，补写一个 `<stem>.txt`
     """
@@ -210,6 +211,11 @@ def export_favorites(dest: str, overwrite: bool = False) -> dict:
         return {**empty, "error": "目标路径不是文件夹", "dest": str(target)}
 
     rows = list_favorites()
+    scope = str(folder_id or "all").strip() or "all"
+    if scope == "none":
+        rows = [r for r in rows if not (r.get("folders") or [])]
+    elif scope != "all":
+        rows = [r for r in rows if scope in (r.get("folders") or [])]
     copied: list[dict] = []
     skipped: list[dict] = []
     failed: list[dict] = []
