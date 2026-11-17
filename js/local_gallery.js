@@ -624,6 +624,153 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   opacity: 0.45;
 }
 
+/* 列表模式：一行一张图（缩略图 + 文件名 + 分辨率体积 + 提示词 chips） */
+.lgb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+.lgb-lrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 9px;
+  border: 1px solid var(--lg-line);
+  border-radius: var(--lg-r);
+  background: var(--lg-elev);
+  cursor: pointer;
+  transition: background var(--lg-dur), border-color var(--lg-dur);
+}
+.lgb-lrow:hover {
+  background: var(--lg-hover);
+}
+.lgb-lrow.sel {
+  border-color: var(--lg-accent);
+  background: var(--lg-accent-soft);
+}
+.lgb-lrow .pic {
+  flex: 0 0 auto;
+  width: 52px;
+  height: 68px;
+  overflow: hidden;
+  border-radius: var(--lg-r-sm);
+  background: var(--lg-sunken);
+}
+.lgb-lrow .pic img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.lgb-lrow .mid {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.lgb-lrow .nm {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--lg-text);
+}
+.lgb-lrow .nm .t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lgb-lrow .nm .ext {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--lg-text-3);
+  text-transform: uppercase;
+}
+.lgb-lrow .meta {
+  font-size: 10.5px;
+  color: var(--lg-text-3);
+}
+.lgb-lrow .tags {
+  display: flex;
+  gap: 4px;
+  overflow: hidden;
+  /* 右侧淡出，暗示还能横向看更多 */
+  -webkit-mask-image: linear-gradient(to right, #000 82%, transparent 100%);
+  mask-image: linear-gradient(to right, #000 82%, transparent 100%);
+}
+.lgb-lrow .tag {
+  flex: 0 0 auto;
+  padding: 1px 6px;
+  border: 1px solid var(--lg-line);
+  border-radius: 4px;
+  background: var(--lg-sunken);
+  color: var(--lg-text-2);
+  font-size: 10px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+.lgb-lrow .tag.more {
+  border-style: dashed;
+  color: var(--lg-text-3);
+}
+.lgb-lrow .no {
+  flex: 0 0 auto;
+  min-width: 20px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--lg-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.lgb-lrow .acts {
+  flex: 0 0 auto;
+  display: none;
+  align-items: center;
+  gap: 2px;
+}
+.lgb-lrow:hover .acts,
+.lgb-lrow.sel .acts {
+  display: flex;
+}
+.lgb-lrow:hover .no,
+.lgb-lrow.sel .no {
+  display: none;
+}
+.lgb-lrow .acts > * {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  color: var(--lg-text-2);
+  cursor: pointer;
+  transition: background var(--lg-dur), color var(--lg-dur);
+}
+.lgb-lrow .acts > *:hover {
+  background: var(--lg-hover);
+  color: var(--lg-text);
+}
+.lgb-lrow .acts .lgb-fav.on {
+  color: var(--lg-accent);
+}
+.lgb-lrow .acts .lgb-copy.off,
+.lgb-lrow .acts .lgb-del:hover {
+  opacity: 0.55;
+}
+.lgb-lrow .acts .lgb-del:hover {
+  color: var(--lg-danger);
+  opacity: 1;
+}
+.lgb-lrow.sel .acts .lgb-fav {
+  color: var(--lg-accent);
+}
+
 /* 时间分组（图库页）：一天一坨，组标题吸顶 */
 .lgb-grid.timeline {
   display: block;
@@ -3161,6 +3308,11 @@ const I18N_EN = {
   "从大到小 / 从新到旧": "Z→A / newest first",
   "排序：点开选「名称 / 时间」和「顺序 / 倒序」": "Sort: pick name/time and ascending/descending",
   "时间分组": "Group by day",
+  "网格": "Grid",
+  "列表": "List",
+  "当前：网格（点一下切成列表）": "Grid view (click for the list view)",
+  "当前：列表（点一下切回网格）": "List view (click back to the grid)",
+  "没有提示词": "No prompt",
   "{n} 张": "{n} items",
   "今天": "Today",
   "昨天": "Yesterday",
@@ -3832,6 +3984,8 @@ app.registerExtension({
         searchMode: "name",
         // 排序：default / name-asc / name-desc / time-desc / time-asc
         sortMode: "default",
+        // 视图：grid 瀑布流 / list 列表
+        view: "grid",
         // 图库页按天分组（时间线）：tl 是渲染游标，collapsedDays 记住折叠了哪几天
         timeGroup: false,
         tl: null,
@@ -4207,9 +4361,13 @@ app.registerExtension({
       // 按时间分组：把缩略图按文件修改时间「一天一坨」
       const btnGroup = el("button", "lgb-mode", "时间分组");
       btnGroup.addEventListener("click", () => applyTimeGroup(!state.timeGroup));
+      // 视图：网格 / 列表
+      const btnView = el("button", "lgb-mode");
+      btnView.addEventListener("click", () => setViewMode(state.view === "list" ? "grid" : "list"));
       // 「含子目录 / 仅有提示词」收进设置，这里只留视图相关的筛选
       filters.append(
         btnGroup,
+        btnView,
         el("div", "lgb-head-spacer"),
         sortModeBtn,
         searchBox,
@@ -4220,7 +4378,9 @@ app.registerExtension({
       // canvas 只做定位容器：框选矩形挂这里，renderGrid 清 grid 时不会被一起清掉
       const canvas = el("div", "lgb-canvas");
       const grid = el("div", "lgb-grid");
-      canvas.append(grid);
+      const listBox = el("div", "lgb-list");
+      listBox.style.display = "none";
+      canvas.append(grid, listBox);
       gridScroll.append(canvas);
 
       /* 页 */
@@ -4589,12 +4749,14 @@ app.registerExtension({
       }
 
       function paintSelection() {
-        grid.querySelectorAll(".lgb-item").forEach((dom) => {
+        const paintOne = (dom) => {
           const order = state.selected.get(dom.dataset.path);
           dom.classList.toggle("sel", order !== undefined);
           const badge = dom.querySelector(".lgb-order");
           if (badge) badge.textContent = order !== undefined ? String(order + 1) : "";
-        });
+        };
+        grid.querySelectorAll(".lgb-item").forEach(paintOne);
+        listBox.querySelectorAll(".lgb-lrow").forEach(paintOne);
         // 提示词页：底栏改看提示词的选中数（图片那套选择保持不动）
         const onPrompts = activeTab === "prompts";
         const count = onPrompts ? state.promptSel.size : state.selected.size;
@@ -4646,6 +4808,8 @@ app.registerExtension({
         if (activeTab !== "gallery" && activeTab !== "favorites") return;
         // 单选模式下不框选：一次只能留一张，拖出一片没有意义
         if (state.pickMode === "single") return;
+        // 列表模式没有矩形可选
+        if (state.view === "list") return;
         // 只从缩略图区域起拖，工具栏 / 筛选栏 / 底栏上的拖动不算框选
         const sc = gridScroll.getBoundingClientRect();
         if (
@@ -8378,6 +8542,7 @@ app.registerExtension({
 
       const SORT_KEY = "localGalleryBrowser.sort";
       const GROUP_KEY = "localGalleryBrowser.timeGroup";
+      const VIEW_KEY = "localGalleryBrowser.view";
 
       // 文件名比较：带数字的按数值比，避免 0010 排在 0002 前面
       function compareByName(a, b) {
@@ -8985,6 +9150,152 @@ app.registerExtension({
         state.columns = makeColumns(grid, itemCount);
       }
 
+      /* ---------------- 列表模式（一行一张） ---------------- */
+      function splitTags(text) {
+        return String(text || "")
+          .split(/[,\n，、]/)
+          .map((t) => t.trim())
+          .filter(Boolean);
+      }
+
+      // 列表一屏几十行，提示词别一次轰几十个请求，限流 4 个并发
+      const rowPromptJobs = { running: 0, queue: [] };
+      function queueRowPrompt(item, fill) {
+        rowPromptJobs.queue.push({ item, fill });
+        drainRowPrompts();
+      }
+      function drainRowPrompts() {
+        while (rowPromptJobs.running < 4 && rowPromptJobs.queue.length) {
+          const job = rowPromptJobs.queue.shift();
+          rowPromptJobs.running += 1;
+          ensurePrompt(job.item)
+            .then((entry) => job.fill(entry))
+            .catch(() => {})
+            .finally(() => {
+              rowPromptJobs.running -= 1;
+              drainRowPrompts();
+            });
+        }
+      }
+
+      function buildRow(item, index) {
+        const row = el("div", "lgb-lrow");
+        row.dataset.path = item.path;
+
+        const pic = el("div", "pic");
+        const img = document.createElement("img");
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.src = buildUrl("/local_gallery/thumb", { path: item.path, size: 128 });
+        img.addEventListener("error", () => {
+          img.style.visibility = "hidden";
+          row.classList.add("broken");
+        });
+        pic.append(img);
+
+        const mid = el("div", "mid");
+        const nm = el("div", "nm");
+        nm.append(
+          el("span", "t", item.stem || item.name),
+          el("span", "ext", item.ext ? `.${item.ext}` : "")
+        );
+        const metaBits = [];
+        if (item.width && item.height) metaBits.push(`${item.width}×${item.height}`);
+        if (item.size) metaBits.push(fmtSize(item.size));
+        const tags = el("div", "tags");
+        mid.append(nm, el("div", "meta", metaBits.join(" · ")), tags);
+
+        const no = el("div", "no", String(index + 1));
+
+        const acts = el("div", "acts");
+        const copy = el("div", `lgb-copy${item.has_prompt ? "" : " off"}`);
+        copy.append(icon("copy", 12));
+        setTitle(copy, item.has_prompt ? "复制这张的提示词" : "这张没有同名提示词");
+        const favOn = state.favorites.has(item.path);
+        const fav = el("div", `lgb-fav${favOn ? " on" : ""}`, favOn ? "★" : "☆");
+        setTitle(fav, favOn ? "取消收藏" : "收藏这张");
+        const zoom = el("div", "lgb-zoom");
+        zoom.append(icon("expand", 12));
+        setTitle(zoom, "大图预览");
+        const del = el("div", "lgb-del");
+        del.append(icon("trash", 12));
+        setTitle(del, "删除（移到回收站）");
+        acts.append(copy, fav, zoom, del);
+
+        row.classList.toggle("is-fav", favOn);
+        row.append(pic, mid, no, acts);
+        wireItemActions(item, { copy, fav, zoom, del });
+
+        row.addEventListener("click", (evt) => {
+          if (
+            zoom.contains?.(evt.target) ||
+            del.contains?.(evt.target) ||
+            fav.contains?.(evt.target) ||
+            copy.contains?.(evt.target)
+          ) {
+            return;
+          }
+          toggleSelect(item.path, index, {
+            range: evt.shiftKey,
+            exclusive: evt.ctrlKey || evt.metaKey,
+          });
+          ensurePrompt(item).then(() => commitSelection());
+        });
+
+        // 提示词按逗号切成 chips（读到了再填，读不到就留一行「没有提示词」）
+        queueRowPrompt(item, (entry) => {
+          if (!row.isConnected) return;
+          const list = splitTags(entry && entry.prompt);
+          if (!list.length) {
+            if (!item.has_prompt) tags.append(el("span", "tag more", "没有提示词"));
+            return;
+          }
+          const cap = 14;
+          list.slice(0, cap).forEach((tag) => tags.append(el("span", "tag", tag)));
+          if (list.length > cap) tags.append(el("span", "tag more", `+${list.length - cap}`));
+        });
+
+        return row;
+      }
+
+      function renderList(items, reset) {
+        if (reset) {
+          listBox.replaceChildren();
+          state.rendered = 0;
+        }
+        const slice = items.slice(state.rendered, state.rendered + PAGE_SIZE);
+        slice.forEach((item, k) => {
+          listBox.append(buildRow(item, state.rendered + k));
+        });
+        state.rendered += slice.length;
+        paintSelection();
+        fillViewport();
+      }
+
+      function setViewMode(mode, { persist = true, rerender = true } = {}) {
+        state.view = mode === "list" ? "list" : "grid";
+        const isList = state.view === "list";
+        grid.style.display = isList ? "none" : "";
+        listBox.style.display = isList ? "" : "none";
+        setTpl(btnView, isList ? "列表" : "网格");
+        setTitle(btnView, isList ? "当前：列表（点一下切回网格）" : "当前：网格（点一下切成列表）");
+        btnView.classList.toggle("primary", isList);
+        // 列表模式没有「按天黑堆」，分组按钮先收起来（timeGroup 状态保留）
+        btnGroup.style.display = isList ? "none" : "";
+        if (persist) {
+          try {
+            localStorage.setItem(VIEW_KEY, state.view);
+          } catch (err) {
+            /* 忽略 */
+          }
+        }
+        if (!rerender) return;
+        state.rendered = 0;
+        state.tl = null;
+        gridScroll.scrollTop = 0;
+        renderGrid();
+      }
+
       /* ---------------- 按天分组（时间线） ---------------- */
       function dayKeyOf(ts) {
         const n = Number(ts) || 0;
@@ -9144,6 +9455,44 @@ app.registerExtension({
         return target;
       }
 
+      /* 复制 / 收藏 / 预览 / 删除：网格卡片和列表行共用一套绑定 */
+      function wireItemActions(item, { copy, fav, zoom, del }) {
+        del.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          hideTip();
+          deletePaths([item.path]);
+        });
+
+        fav.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          hideTip();
+          // 收藏时要先问放进哪个收藏夹；取消收藏直接生效
+          favoriteOne(item, fav);
+        });
+
+        copy.addEventListener("click", async (evt) => {
+          evt.stopPropagation();
+          hideTip();
+          if (!item.has_prompt) {
+            setStatus("这张没有同名提示词，无法复制", { error: true });
+            return;
+          }
+          const entry = await ensurePrompt(item);
+          const text = (entry && entry.prompt) || "";
+          if (!text) {
+            setStatus("这张的提示词是空的，没有可复制的内容", { error: true });
+            return;
+          }
+          await copyText(text, "已复制这张的提示词");
+        });
+
+        zoom.addEventListener("click", (evt) => {
+          evt.stopPropagation();
+          hideTip();
+          openViewer(item);
+        });
+      }
+
       function buildItem(item, index) {
         const dom = el("div", "lgb-item");
         dom.dataset.path = item.path;
@@ -9198,34 +9547,7 @@ app.registerExtension({
         dom.classList.toggle("is-fav", favOn);
         dom.append(img, badge, txt, acts, cap);
 
-        del.addEventListener("click", (evt) => {
-          evt.stopPropagation();
-          hideTip();
-          deletePaths([item.path]);
-        });
-
-        fav.addEventListener("click", (evt) => {
-          evt.stopPropagation();
-          hideTip();
-          // 收藏时要先问放进哪个收藏夹；取消收藏直接生效
-          favoriteOne(item, fav);
-        });
-
-        copy.addEventListener("click", async (evt) => {
-          evt.stopPropagation();
-          hideTip();
-          if (!item.has_prompt) {
-            setStatus("这张没有同名提示词，无法复制", { error: true });
-            return;
-          }
-          const entry = await ensurePrompt(item);
-          const text = (entry && entry.prompt) || "";
-          if (!text) {
-            setStatus("这张的提示词是空的，没有可复制的内容", { error: true });
-            return;
-          }
-          await copyText(text, "已复制这张的提示词");
-        });
+        wireItemActions(item, { copy, fav, zoom, del });
 
         dom.addEventListener("click", (evt) => {
           // 图标用内联 svg，命中判断要连子节点一起算
@@ -9245,10 +9567,6 @@ app.registerExtension({
           ensurePrompt(item).then(() => commitSelection());
         });
         bindHover(dom, item);
-        zoom.addEventListener("click", (evt) => {
-          evt.stopPropagation();
-          openViewer(item);
-        });
         return dom;
       }
 
@@ -9269,15 +9587,24 @@ app.registerExtension({
         }
 
         if (!items.length) {
-          grid.replaceChildren(el("div", "lgb-empty", state.busy
+          const empty = el("div", "lgb-empty", state.busy
             ? "正在扫描路径…"
             : getPaths().length
               ? "这些路径下没有图片。到「设置 → 浏览本机路径」勾上「含子目录」，或换一个路径。"
-              : "还没有图片 —— 打开「设置 → 浏览本机路径」加一个文件夹。"));
+              : "还没有图片 —— 打开「设置 → 浏览本机路径」加一个文件夹。");
           grid.classList.remove("timeline");
+          grid.replaceChildren();
+          listBox.replaceChildren();
+          (state.view === "list" ? listBox : grid).append(empty);
           state.columns = [];
           state.tl = null;
           paintSelection();
+          return;
+        }
+
+        // 列表模式：一行一张，不参与瀑布流 / 时间分组
+        if (state.view === "list") {
+          renderList(items, reset);
           return;
         }
 
@@ -9863,10 +10190,13 @@ app.registerExtension({
         const savedSort = localStorage.getItem(SORT_KEY);
         if (SORT_MODES.some((m) => m.key === savedSort)) state.sortMode = savedSort;
         if (localStorage.getItem(GROUP_KEY) === "1") state.timeGroup = true;
+        if (localStorage.getItem(VIEW_KEY) === "list") state.view = "list";
       } catch (err) {
         /* 忽略 */
       }
       applySortMode(state.sortMode, { persist: false, rerender: false });
+      // 视图偏好也在建面板时就套上（不重绘，等首次 refresh）
+      setViewMode(state.view, { persist: false, rerender: false });
       updateTabCounts();
       applyHints();
       loadFavorites();
