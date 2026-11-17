@@ -3081,6 +3081,8 @@ const I18N_EN = {
   "删除 {n} 张图片？": "Delete {n} image(s)?",
   "删除图片（{n}）": "Delete images ({n})",
   "把当前列表里的图全部选中": "Select every image in the current list",
+  "把当前列表里的图全部选中（单选模式下会自动切到多选）": "Select every image in the current list (switches to multi-select automatically)",
+  "已切到多选并全选": "Switched to multi-select and selected all",
   "取消全部选中": "Clear the selection",
 
   // 空状态 / 提示
@@ -4034,7 +4036,7 @@ app.registerExtension({
       btnDelSel.append(delSelLabel);
       setTitle(btnDelSel, "点开选择：图片 + 提示词一起删 / 只删提示词 / 只删图片");
       const btnAll = el("button", "lgb-btn sm", "全选");
-      setTitle(btnAll, "把当前列表里的图全部选中");
+      setTitle(btnAll, "把当前列表里的图全部选中（单选模式下会自动切到多选）");
       const btnNone = el("button", "lgb-btn sm", "清空选择");
       setTitle(btnNone, "取消全部选中");
       bulk.append(btnUnfav, btnFavFolder, btnDelSel, btnAll, btnNone);
@@ -4417,8 +4419,6 @@ app.registerExtension({
         setTitle(segSingle, "单选：点一下只保留这一张，再点同一张取消选中");
         setTitle(segMulti, "多选：点一下加选、再点取消，Shift 连选");
         setTitle(modeSwitch, "选择模式：单选 / 多选（点另一侧就滑过去）");
-        // 全选一次会选多张，单选下没有意义
-        btnAll.disabled = single;
         placeModeKnob();
       }
 
@@ -9303,10 +9303,14 @@ app.registerExtension({
           paintSelection();
           return;
         }
+        // 全选必然是「多张」：单选模式下先切回多选，别让按钮点了没反应
+        const wasSingle = state.pickMode === "single";
+        if (wasSingle) setPickMode("multi");
         state.selected.clear();
         visibleItems().forEach((item, index) => state.selected.set(item.path, index));
         commitSelection();
         paintSelection();
+        if (wasSingle) setStatus("已切到多选并全选");
       });
       btnNone.addEventListener("click", () => {
         if (onPromptsTab()) {
