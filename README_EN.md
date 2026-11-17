@@ -124,6 +124,7 @@ The **search scope** button cycles through three modes (remembered):
 Aggregates favorites across folders, independent of the current path list.
 
 - Click ☆ on a thumbnail to favorite it; favorited covers get a small gold star
+- Favoriting asks **which folder to put it in** first (you can create one right there, or pick *Just favorite (no folder)*). Clicking ☆ on an already-favorited image just unfavorites it — no dialog
 - Stored in `favorites.json` in the node folder — **across browsers and sessions**
 - Preview, hover, viewer and delete behave exactly like the Gallery tab
 - Deleting an image removes it from favorites, so no dead links
@@ -207,7 +208,7 @@ Batch format conversion, size compression and resizing — **no VRAM involved**,
 
 <img src="docs/viewer.jpg" width="580" alt="Image viewer">
 
-One floating toolbar at the bottom: `‹ 3 / 300 ›` paging ｜ `⧉` copy prompt ｜ `★` favorite ｜ `🗑` delete ｜ `− 100% +` zoom ｜ `⤢` fit to window.
+One floating toolbar at the bottom: `‹ 3 / 300 ›` paging ｜ `⧉` copy prompt ｜ `★` favorite (asks for a folder as well) ｜ `🗑` delete ｜ `− 100% +` zoom ｜ `⤢` fit to window.
 
 - **Paging**: `←` `→` keys or the arrows; disabled at the first/last image
 - **Copy**: `⧉` puts the current image's prompt on the clipboard and confirms in the status bar; when there's no matching `.txt` the button dims and clicking explains why

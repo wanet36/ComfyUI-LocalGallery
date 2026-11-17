@@ -590,6 +590,10 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   border-color: var(--lg-accent);
   background: var(--lg-accent-soft);
 }
+.lgb-folderrow.lgb-unfiled {
+  border-style: dashed;
+  color: var(--lg-text-2);
+}
 .lgb-folderrow .nm {
   flex: 1 1 auto;
   min-width: 0;
@@ -2952,6 +2956,10 @@ const I18N_EN = {
   "已删除收藏夹：{name}": "Folder deleted: {name}",
   "读取收藏夹失败：{err}": "Could not load folders: {err}",
   "加入收藏夹": "Add to folder",
+  "收藏到哪个收藏夹？": "Which folder?",
+  "不分类，直接收藏": "Just favorite (no folder)",
+  "把「{name}」收藏起来，顺便选个分类；不选就是未分类。": "Favorite \"{name}\" — pick a folder, or skip it to keep it unfiled.",
+  "已收藏到「{name}」": "Favorited into \"{name}\"",
   "加入收藏夹 ({n})": "Add to folder ({n})",
   "把选中的图片放进收藏夹（可以顺手新建一个）": "Put the selected images into a favorite folder (create one on the spot)",
   "先选中图片再放进收藏夹": "Select some images first",
@@ -5277,6 +5285,17 @@ app.registerExtension({
         async function toggleCurrentFav() {
           const cur = list[index];
           if (!cur || btnFav.disabled) return;
+          // 还没收藏：先问放进哪个收藏夹，选完再同步星标（收藏页的换图逻辑用不上）
+          if (!state.favorites.has(cur.path)) {
+            favoriteOne(cur, null, {
+              onDone: () => {
+                const on = state.favorites.has(cur.path);
+                paintViewerFav(on);
+                syncCardFav(cur.path, on);
+              },
+            });
+            return;
+          }
           btnFav.disabled = true;
           await toggleFavorite(cur, null);
           const on = state.favorites.has(cur.path);
@@ -8518,6 +8537,26 @@ app.registerExtension({
         }
       }
 
+      // 单张收藏：未收藏 → 先弹「收藏到哪个收藏夹」；已收藏 → 直接取消
+      function favoriteOne(item, dom, { onDone } = {}) {
+        if (!item?.path) return;
+        if (state.favorites.has(item.path)) {
+          toggleFavorite(item, dom).then(() => onDone?.());
+          return;
+        }
+        openFolderPicker([item.path], {
+          title: "收藏到哪个收藏夹？",
+          hintTpl: "把「{name}」收藏起来，顺便选个分类；不选就是未分类。",
+          hintVars: { name: shortName(item.path) },
+          allowUnfiled: true,
+          onUnfiled: () => {
+            if (dom) dom.textContent = "★";
+            toggleFavorite(item, dom).then(() => onDone?.());
+          },
+          afterAssign: () => onDone?.(),
+        });
+      }
+
       async function toggleFavorite(item, dom) {
         if (!item?.path) return;
         const wasFav = state.favorites.has(item.path);
@@ -8717,7 +8756,7 @@ app.registerExtension({
       }
 
       // 把选中的图片放进收藏夹：列出现有收藏夹 + 就地新建
-      function openFolderPicker(paths) {
+      function openFolderPicker(paths, opts = {}) {
         const list = [...new Set((paths || []).filter(Boolean))];
         if (!list.length) {
           setStatus("先选中图片再放进收藏夹", { error: true });
@@ -8726,11 +8765,10 @@ app.registerExtension({
         const overlay = mkOverlay();
         const box = el("div", "lgb-confirm lgb-folderpicker");
         const body = el("div", "body");
-        const hint = elTpl(
-          "div",
-          "hint",
-          "把选中的 {n} 张图片放进哪个收藏夹？（没收藏的会自动收藏）",
-          { n: list.length }
+        const hint = setTpl(
+          el("div", "hint"),
+          opts.hintTpl || "把选中的 {n} 张图片放进哪个收藏夹？（没收藏的会自动收藏）",
+          opts.hintTpl ? opts.hintVars || {} : { n: list.length }
         );
         const rows = el("div", "lgb-folderlist");
         const foot = el("div", "foot");
@@ -8738,7 +8776,7 @@ app.registerExtension({
         btnNew.append(tspan("＋ 新建收藏夹"));
         const btnCancel = el("button", "lgb-btn", "取消");
         foot.append(btnNew, el("div", "lgb-head-spacer"), btnCancel);
-        box.append(el("h3", "", "加入收藏夹"), hint, rows, foot);
+        box.append(el("h3", "", opts.title || "加入收藏夹"), hint, rows, foot);
         overlay.append(box);
         document.body.appendChild(overlay);
 
@@ -8764,9 +8802,14 @@ app.registerExtension({
             });
             applyFolderState(data);
             close();
-            setStatus("已把 {n} 张放进「{name}」", {
-              vars: { n: data.changed?.length || list.length, name: folder.name },
-            });
+            if (list.length === 1) {
+              setStatus("已收藏到「{name}」", { vars: { name: folder.name } });
+            } else {
+              setStatus("已把 {n} 张放进「{name}」", {
+                vars: { n: data.changed?.length || list.length, name: folder.name },
+              });
+            }
+            opts.afterAssign?.(folder);
             // 收藏页：星标和当前列表都要跟着变
             grid.querySelectorAll(".lgb-item").forEach((dom) => {
               paintFav(dom.querySelector(".lgb-fav"), state.favorites.has(dom.dataset.path));
@@ -8781,6 +8824,15 @@ app.registerExtension({
 
         function paintRows() {
           rows.replaceChildren();
+          if (opts.allowUnfiled) {
+            const row = el("button", "lgb-folderrow lgb-unfiled");
+            row.append(el("span", "nm", opts.unfiledLabel || "不分类，直接收藏"));
+            row.addEventListener("click", () => {
+              close();
+              opts.onUnfiled?.();
+            });
+            rows.append(row);
+          }
           if (!state.folders.length) {
             rows.append(el("div", "lgb-empty", "还没有收藏夹，点下面「＋ 新建收藏夹」建一个"));
             return;
@@ -9055,8 +9107,8 @@ app.registerExtension({
         fav.addEventListener("click", (evt) => {
           evt.stopPropagation();
           hideTip();
-          fav.textContent = state.favorites.has(item.path) ? "☆" : "★";
-          toggleFavorite(item, fav);
+          // 收藏时要先问放进哪个收藏夹；取消收藏直接生效
+          favoriteOne(item, fav);
         });
 
         copy.addEventListener("click", async (evt) => {
