@@ -988,6 +988,12 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   gap: 8px;
   width: 100%;
 }
+/* 缩略图区域拖动不该选中文字（单选模式没有框选，拖一下不应拉出蓝色选区）。
+   只挂 canvas：提示词页复用 .lgb-scroll，那里的文字要能手动选 */
+.lgb-canvas {
+  -webkit-user-select: none;
+  user-select: none;
+}
 .lgb-col {
   flex: 1 1 0;
   min-width: 0;
@@ -4620,6 +4626,8 @@ app.registerExtension({
       function beginMarquee(evt) {
         if (evt.button !== 0) return;
         if (activeTab !== "gallery" && activeTab !== "favorites") return;
+        // 单选模式下不框选：一次只能留一张，拖出一片没有意义
+        if (state.pickMode === "single") return;
         // 只从缩略图区域起拖，工具栏 / 筛选栏 / 底栏上的拖动不算框选
         const sc = gridScroll.getBoundingClientRect();
         if (
