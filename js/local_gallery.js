@@ -843,8 +843,12 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   gap: 8px;
   width: 100%;
 }
-.lgb-tgroup.collapsed .lgb-tgroup-grid {
+.lgb-tgroup.collapsed .lgb-tgroup-grid,
+.lgb-tgroup.collapsed .lgb-tgroup-rows {
   display: none;
+}
+.lgb-tgroup-rows {
+  padding-top: 2px;
 }
 .lgb-tgroup.collapsed .lgb-tgroup-head {
   margin-bottom: 0;
@@ -3312,6 +3316,8 @@ const I18N_EN = {
   "列表": "List",
   "当前：网格（点一下切成列表）": "Grid view (click for the list view)",
   "当前：列表（点一下切回网格）": "List view (click back to the grid)",
+  "网格：瀑布流缩略图": "Grid: waterfall thumbnails",
+  "列表：一行一张，带文件名和提示词标签": "List: one image per row with name and prompt tags",
   "没有提示词": "No prompt",
   "{n} 张": "{n} items",
   "今天": "Today",
@@ -4361,14 +4367,27 @@ app.registerExtension({
       // 按时间分组：把缩略图按文件修改时间「一天一坨」
       const btnGroup = el("button", "lgb-mode", "时间分组");
       btnGroup.addEventListener("click", () => applyTimeGroup(!state.timeGroup));
-      // 视图：网格 / 列表
-      const btnView = el("button", "lgb-mode");
-      btnView.addEventListener("click", () => setViewMode(state.view === "list" ? "grid" : "list"));
+      // 视图：网格 / 列表（滑块，放筛选行最左）
+      const viewSwitch = el("div", "lgb-switch lgb-viewswitch");
+      const viewKnob = el("span", "knob");
+      const segGrid = el("button", "seg");
+      segGrid.append(tspan("网格"));
+      const segList = el("button", "seg");
+      segList.append(tspan("列表"));
+      setTitle(segGrid, "网格：瀑布流缩略图");
+      setTitle(segList, "列表：一行一张，带文件名和提示词标签");
+      viewSwitch.append(viewKnob, segGrid, segList);
+      segGrid.addEventListener("click", () => setViewMode("grid"));
+      segList.addEventListener("click", () => setViewMode("list"));
+      viewSwitch.addEventListener("click", (evt) => {
+        if (evt.target.closest?.(".seg")) return;
+        setViewMode(state.view === "list" ? "grid" : "list");
+      });
       // 「含子目录 / 仅有提示词」收进设置，这里只留视图相关的筛选
       filters.append(
-        btnGroup,
-        btnView,
+        viewSwitch,
         el("div", "lgb-head-spacer"),
+        btnGroup,
         sortModeBtn,
         searchBox,
         countLabel
@@ -4452,9 +4471,9 @@ app.registerExtension({
         modeSwitch,
         selLabel,
         statusLabel,
+        btnCopy,
         btnJumpReverse,
-        btnJumpConvert,
-        btnCopy
+        btnJumpConvert
       );
 
       /* 单选 / 多选切换：模式存本地，切到单选时把多余的选中项裁掉 */
@@ -4489,7 +4508,11 @@ app.registerExtension({
       // 首帧量一次真实宽度；容器变宽（切语言）时再量，别让滑块和文字错位
       requestAnimationFrame(placeModeKnob);
       if (typeof ResizeObserver === "function") {
-        new ResizeObserver(() => placeModeKnob()).observe(modeSwitch);
+        new ResizeObserver(() => {
+          placeModeKnob();
+          syncViewSwitch();
+        }).observe(modeSwitch);
+        new ResizeObserver(() => syncViewSwitch()).observe(viewSwitch);
       }
 
       wrap.append(
@@ -4681,18 +4704,30 @@ app.registerExtension({
       }
 
       /* 滑块停在当前模式那一格：量一下标签的真实宽度，中英文都不会错位 */
-      function placeModeKnob(tries = 0) {
-        const active = state.pickMode === "single" ? segSingle : segMulti;
-        const width = active.offsetWidth;
+      /* 滑块开关的通用定位：量当前那格的宽度，写到 knob 上 */
+      function placeKnob(knob, box, active, tries = 0) {
+        const width = active ? active.offsetWidth : 0;
         if (!width) {
-          // 面板还没挂到 DOM（宽高为 0）时下一帧再量，最多重试 20 帧
-          if (tries < 20 && modeSwitch.isConnected) {
-            requestAnimationFrame(() => placeModeKnob(tries + 1));
+          if (tries < 20 && box.isConnected) {
+            requestAnimationFrame(() => placeKnob(knob, box, active, tries + 1));
           }
           return;
         }
-        modeKnob.style.width = `${width}px`;
-        modeKnob.style.transform = `translateX(${active.offsetLeft - 2}px)`;
+        knob.style.width = `${width}px`;
+        knob.style.transform = `translateX(${active.offsetLeft - 2}px)`;
+      }
+
+      function placeModeKnob() {
+        placeKnob(modeKnob, modeSwitch, state.pickMode === "single" ? segSingle : segMulti);
+      }
+
+      function syncViewSwitch() {
+        const isList = state.view === "list";
+        segGrid.classList.toggle("on", !isList);
+        segList.classList.toggle("on", isList);
+        segGrid.setAttribute("aria-pressed", isList ? "false" : "true");
+        segList.setAttribute("aria-pressed", isList ? "true" : "false");
+        placeKnob(viewKnob, viewSwitch, isList ? segList : segGrid);
       }
 
       /* 滑块的外观，以及和「全选」的互斥 */
@@ -9277,11 +9312,7 @@ app.registerExtension({
         const isList = state.view === "list";
         grid.style.display = isList ? "none" : "";
         listBox.style.display = isList ? "" : "none";
-        setTpl(btnView, isList ? "列表" : "网格");
-        setTitle(btnView, isList ? "当前：列表（点一下切回网格）" : "当前：网格（点一下切成列表）");
-        btnView.classList.toggle("primary", isList);
-        // 列表模式没有「按天黑堆」，分组按钮先收起来（timeGroup 状态保留）
-        btnGroup.style.display = isList ? "none" : "";
+        syncViewSwitch();
         if (persist) {
           try {
             localStorage.setItem(VIEW_KEY, state.view);
@@ -9353,7 +9384,7 @@ app.registerExtension({
         return target;
       }
 
-      function createDayBlock(group, colCount) {
+      function createDayBlock(group, colCount, mode = "grid") {
         const box = el("div", "lgb-tgroup");
         box.dataset.day = group.key || "unknown";
         const head = el("button", "lgb-tgroup-head");
@@ -9372,43 +9403,60 @@ app.registerExtension({
           if (collapsed) state.collapsedDays.add(group.key);
           else state.collapsedDays.delete(group.key);
         });
-        // body 也带 lgb-grid 类：compact（列太窄时收按钮）那套样式才生效
-        const body = el("div", "lgb-grid lgb-tgroup-grid");
+        // 网格：body 也带 lgb-grid 类（compact 那套样式才生效）；列表：body 直接是一个行列表
+        const body =
+          mode === "list"
+            ? el("div", "lgb-list lgb-tgroup-rows")
+            : el("div", "lgb-grid lgb-tgroup-grid");
         box.append(head, body);
-        return { el: box, head, body, columns: makeColumns(body, 0, colCount) };
+        return {
+          el: box,
+          head,
+          body,
+          columns: mode === "list" ? null : makeColumns(body, 0, colCount),
+        };
       }
 
       /* 时间线渲染：逐组、逐批，滚到哪画到哪；折叠只改 CSS，不丢已画好的图 */
-      function renderTimeline(items, reset) {
-        if (reset || !state.tl || state.tl.total !== items.length) {
+      function renderTimeline(items, reset, { mode = "grid" } = {}) {
+        const container = mode === "list" ? listBox : grid;
+        const stamp = `${items.length}|${mode}`;
+        if (reset || !state.tl || state.tl.stamp !== stamp) {
           state.tl = {
             list: buildDayGroups(items),
             blocks: new Map(),
             gi: 0,
             offset: 0,
             total: items.length,
+            stamp,
+            mode,
           };
           // 各组统一列数：跨组列宽才对得上；同时不超过最大组的张数，免得空列太多
           const maxPerDay = state.tl.list.reduce((m, g) => Math.max(m, g.entries.length), 0);
           state.tl.colCount = Math.max(1, Math.min(cols, maxPerDay || cols));
           grid.replaceChildren();
+          listBox.replaceChildren();
           state.columns = [];
           state.rendered = 0;
         }
-        grid.classList.add("timeline");
+        if (mode === "grid") grid.classList.add("timeline");
         const tl = state.tl;
         let budget = PAGE_SIZE;
         while (budget > 0 && tl.gi < tl.list.length) {
           const group = tl.list[tl.gi];
           let block = tl.blocks.get(group.key);
           if (!block) {
-            block = createDayBlock(group, tl.colCount);
+            block = createDayBlock(group, tl.colCount, mode);
             tl.blocks.set(group.key, block);
-            grid.append(block.el);
+            container.append(block.el);
           }
           const take = Math.min(budget, group.entries.length - tl.offset);
           for (let k = 0; k < take; k += 1) {
             const { item, index } = group.entries[tl.offset + k];
+            if (mode === "list") {
+              block.body.append(buildRow(item, index));
+              continue;
+            }
             const col = shortestOf(block.columns);
             col.el.append(buildItem(item, index));
             const ratio = item.width && item.height ? item.height / item.width : 1;
@@ -9602,8 +9650,14 @@ app.registerExtension({
           return;
         }
 
-        // 列表模式：一行一张，不参与瀑布流 / 时间分组
+        // 列表模式：一行一张；开了时间分组就按天分块装行
         if (state.view === "list") {
+          if (state.timeGroup && activeTab === "gallery") {
+            renderTimeline(items, reset, { mode: "list" });
+            paintSelection();
+            fillViewport();
+            return;
+          }
           renderList(items, reset);
           return;
         }
