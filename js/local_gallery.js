@@ -3121,6 +3121,9 @@ const I18N_EN = {
   "撤销失败：{err}": "Undo failed: {err}",
   "没有可以撤销的操作": "Nothing to undo",
   "已撤销取消收藏：恢复 {n} 张": "Undo — {n} image(s) favorited again",
+  "已撤销收藏：{n} 张已取消收藏": "Undo — {n} image(s) unfavorited again",
+  "已撤销收藏：{n} 张已移出收藏夹": "Undo — {n} image(s) removed from the folder",
+  "已撤销收藏：{n} 张": "Undo — {n} favorite change(s) reverted",
   " · 收藏也回来了": " · favorites restored",
   "导出范围": "Scope",
   "导出哪些收藏：全部 / 未分类 / 某一个收藏夹": "Which favorites to export: all / unfiled / one folder",
@@ -6212,6 +6215,23 @@ app.registerExtension({
         pushUndo({ kind: "fav", entries });
       }
 
+      /* 收藏（含放进收藏夹）也能撤：entries 里记下「原本是不是已收藏」，
+         撤销时未收藏的整条取消，原本就收藏的只从加进去的那个夹里移出 */
+      function pushFavoriteUndo(items) {
+        const entries = (items || []).filter((e) => e && e.path);
+        if (!entries.length) return;
+        pushUndo({ kind: "unfav", entries });
+      }
+
+      function repaintFavAll() {
+        grid.querySelectorAll(".lgb-item").forEach((dom) => {
+          paintFav(dom.querySelector(".lgb-fav"), state.favorites.has(dom.dataset.path));
+        });
+        listBox.querySelectorAll(".lgb-lrow").forEach((dom) => {
+          paintFav(dom.querySelector(".lgb-fav"), state.favorites.has(dom.dataset.path));
+        });
+      }
+
       // 重新收藏 + 还原收藏夹归属（assign 会把没收藏的自动收藏）
       async function restoreFavorites(entries) {
         const paths = entries.map((e) => e.path).filter(Boolean);
@@ -6253,13 +6273,7 @@ app.registerExtension({
         try {
           if (task.kind === "fav") {
             await restoreFavorites(task.entries);
-            // 星标和收藏页都要跟着回来
-            grid.querySelectorAll(".lgb-item").forEach((dom) => {
-              paintFav(dom.querySelector(".lgb-fav"), state.favorites.has(dom.dataset.path));
-            });
-            listBox.querySelectorAll(".lgb-lrow").forEach((dom) => {
-              paintFav(dom.querySelector(".lgb-fav"), state.favorites.has(dom.dataset.path));
-            });
+            repaintFavAll();
             if (state.source === "favorites") {
               await refresh({ overridePaths: favoritePathsForView() });
             }
@@ -6267,6 +6281,55 @@ app.registerExtension({
               t("已撤销取消收藏：恢复 {n} 张", { n: task.entries.length }) +
                 (undoStack.length ? t(" · 还能再撤 {n} 次", { n: undoStack.length }) : "")
             );
+            return;
+          }
+
+          if (task.kind === "unfav") {
+            // 原本没收藏的：整条取消收藏
+            const plain = task.entries.filter((e) => !e.wasFav).map((e) => e.path);
+            if (plain.length) {
+              const data = await apiJson("/local_gallery/favorites", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ paths: plain, action: "remove" }),
+              });
+              applyFolderState(data);
+            }
+            // 原本就收藏过的：只把它们从这次加进去的夹里移出
+            const byFolder = new Map();
+            task.entries
+              .filter((e) => e.wasFav && e.folderId)
+              .forEach((e) => {
+                if (!byFolder.has(e.folderId)) byFolder.set(e.folderId, []);
+                byFolder.get(e.folderId).push(e.path);
+              });
+            for (const [fid, list] of byFolder) {
+              try {
+                const res = await apiJson("/local_gallery/favorites/folders/assign", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ paths: list, folder_id: fid, action: "remove" }),
+                });
+                applyFolderState(res);
+              } catch (err) {
+                /* 夹没了就跳过 */
+              }
+            }
+            repaintFavAll();
+            if (state.source === "favorites") {
+              await refresh({ overridePaths: favoritePathsForView() });
+            }
+            const ungrouped = task.entries.filter((e) => e.wasFav && e.folderId).length;
+            const removedFav = task.entries.length - ungrouped;
+            let msg;
+            if (removedFav > 0 && ungrouped === 0) {
+              msg = t("已撤销收藏：{n} 张已取消收藏", { n: removedFav });
+            } else if (removedFav === 0 && ungrouped > 0) {
+              msg = t("已撤销收藏：{n} 张已移出收藏夹", { n: ungrouped });
+            } else {
+              msg = t("已撤销收藏：{n} 张", { n: task.entries.length });
+            }
+            setStatus(msg + (undoStack.length ? t(" · 还能再撤 {n} 次", { n: undoStack.length }) : ""));
             return;
           }
 
@@ -9015,6 +9078,8 @@ app.registerExtension({
           state.favorites = new Map((data.items || []).map((it) => [it.path, it]));
           if (wasFav) {
             pushFavUndo([{ path: item.path, folders: (favMeta?.folders || []).slice() }]);
+          } else {
+            pushFavoriteUndo([{ path: item.path, wasFav: false }]);
           }
           setStatus(wasFav ? t("已取消收藏：{name}", { name: item.name }) : t("已收藏：{name}", { name: item.name }));
         } catch (err) {
@@ -9236,6 +9301,12 @@ app.registerExtension({
         });
 
         async function assignTo(folder) {
+          // 记下加之前的状态：原本没收藏的，撤销=取消收藏；原本收藏过的，撤销=移出这个夹
+          const before = list.map((p) => ({
+            path: p,
+            wasFav: state.favorites.has(p),
+            folderId: folder.id,
+          }));
           try {
             const data = await apiJson("/local_gallery/favorites/folders/assign", {
               method: "POST",
@@ -9243,6 +9314,7 @@ app.registerExtension({
               body: JSON.stringify({ paths: list, folder_id: folder.id, action: "add" }),
             });
             applyFolderState(data);
+            pushFavoriteUndo(before);
             close();
             if (list.length === 1) {
               setStatus("已收藏到「{name}」", { vars: { name: folder.name } });

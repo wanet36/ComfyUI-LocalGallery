@@ -137,7 +137,10 @@ Aggregates favorites across folders, independent of the current path list.
 - **Bulk add**: select images in Gallery or Favorites → **Add to folder (N)** in the path bar → pick a folder (or create one right there). Images that were not favorited get favorited automatically
 - Right-click a folder chip to delete the category — the images **stay favorited**
 - With images selected on the Favorites tab, the path-bar button becomes **Unfavorite (N)** — they leave the favorites list, files are untouched, and ☆ adds them back
-- **Ctrl + Z undoes** both deleting (move to Trash) and unfavoriting, newest first, up to 20 steps. Undoing a delete moves the files back and restores their favorites; undoing an unfavorite re-favorites the images into their original folders. Inside a text input Ctrl+Z stays the browser's own undo
+- **Ctrl + Z undoes** deleting (move to Trash), favoriting and unfavoriting, newest first, up to 20 steps:/n  - undo a delete → files move back, and their favorites come back too
+  - undo an unfavorite → the images are favorited again into their original folders
+  - undo a favorite → that favorite is removed; if the image was already favorited and only got added to a folder, it is just taken out of that folder (the favorite stays)
+  - inside a text input Ctrl+Z stays the browser's own undo; when the pointer/focus is outside the panel it is left to the ComfyUI canvas
 
 ### Prompts
 
