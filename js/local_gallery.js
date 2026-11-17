@@ -3114,6 +3114,14 @@ const I18N_EN = {
   "不分类，直接收藏": "Just favorite (no folder)",
   "把「{name}」收藏起来，顺便选个分类；不选就是未分类。": "Favorite \"{name}\" — pick a folder, or skip it to keep it unfiled.",
   "已收藏到「{name}」": "Favorited into \"{name}\"",
+  "没有可以撤销的删除": "Nothing to undo",
+  "已撤销删除：恢复 {n} 个文件": "Undone — restored {n} file(s)",
+  "（{n} 个失败）": " ({n} failed)",
+  " · 还能再撤 {n} 次": " · {n} more undo available",
+  "撤销失败：{err}": "Undo failed: {err}",
+  "没有可以撤销的操作": "Nothing to undo",
+  "已撤销取消收藏：恢复 {n} 张": "Undo — {n} image(s) favorited again",
+  " · 收藏也回来了": " · favorites restored",
   "导出范围": "Scope",
   "导出哪些收藏：全部 / 未分类 / 某一个收藏夹": "Which favorites to export: all / unfiled / one folder",
   "全部收藏（{n} 张）": "All favorites ({n})",
@@ -3220,7 +3228,7 @@ const I18N_EN = {
   "删除提示词（{n}）": "Delete prompts ({n})",
   "移到回收站（{n}）": "Move to trash ({n})",
   "这些文件会被【移到回收站】（不是永久删除），连同同名提示词文件一起移走。": "These files move to the Trash (not permanently deleted), together with their prompt files.",
-  "需要恢复时，把回收站里的文件移回原目录即可。": "To restore, move them back from the Trash.",
+  "删完按 Ctrl+Z 就能撤销（也可以到回收站里手动移回）。": "Press Ctrl+Z to undo (or restore them from the Trash).",
   "只把同名提示词文件（.txt / .caption / .json…）移到回收站，图片不会被删除。": "Only the prompt files (.txt / .caption / .json…) move to the Trash; images are kept.",
   "需要时可以随时从「回收站」恢复（图库页路径栏进入）。": "Restore them from Trash anytime (Trash button on the gallery tab).",
   "没有文件被移动": "No files moved",
@@ -6177,6 +6185,123 @@ app.registerExtension({
         return String(path || "").split(/[\\/]/).pop() || String(path || "");
       }
 
+      /* ---------------- Ctrl+Z 撤销删除 ----------------
+         删除都是「移到回收站」，所以撤销 = 按 batch + id 把文件移回去。
+         每次删除成功压一条，最多记 20 次；Ctrl+Z 从最近一次往回撤。 */
+      const undoStack = [];
+      const UNDO_MAX = 20;
+
+      function pushUndo(task) {
+        undoStack.push({ ...task, at: Date.now() });
+        if (undoStack.length > UNDO_MAX) undoStack.shift();
+      }
+
+      /* 删除进回收站：entries 是 {batch, id}；favEntries 顺手记下被连带取消的收藏，
+         撤销时一起还原，省得用户自己去点星 */
+      function pushTrashUndo(moved, favEntries = []) {
+        const entries = (moved || [])
+          .filter((m) => m && m.batch && m.id)
+          .map((m) => ({ batch: m.batch, id: m.id }));
+        if (!entries.length) return;
+        pushUndo({ kind: "trash", entries, favEntries });
+      }
+
+      function pushFavUndo(items) {
+        const entries = (items || []).filter((e) => e && e.path);
+        if (!entries.length) return;
+        pushUndo({ kind: "fav", entries });
+      }
+
+      // 重新收藏 + 还原收藏夹归属（assign 会把没收藏的自动收藏）
+      async function restoreFavorites(entries) {
+        const paths = entries.map((e) => e.path).filter(Boolean);
+        if (!paths.length) return;
+        const data = await apiJson("/local_gallery/favorites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paths, action: "add" }),
+        });
+        state.favorites = new Map((data.items || []).map((it) => [it.path, it]));
+        const byFolder = new Map();
+        entries.forEach((e) => {
+          (e.folders || []).forEach((fid) => {
+            if (!byFolder.has(fid)) byFolder.set(fid, []);
+            byFolder.get(fid).push(e.path);
+          });
+        });
+        for (const [fid, list] of byFolder) {
+          try {
+            const res = await apiJson("/local_gallery/favorites/folders/assign", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ paths: list, folder_id: fid, action: "add" }),
+            });
+            applyFolderState(res);
+          } catch (err) {
+            /* 夹没了就只恢复收藏，不打断撤销 */
+          }
+        }
+        updateTabCounts();
+      }
+
+      async function undoLast() {
+        const task = undoStack.pop();
+        if (!task) {
+          setStatus("没有可以撤销的操作");
+          return;
+        }
+        try {
+          if (task.kind === "fav") {
+            await restoreFavorites(task.entries);
+            // 星标和收藏页都要跟着回来
+            grid.querySelectorAll(".lgb-item").forEach((dom) => {
+              paintFav(dom.querySelector(".lgb-fav"), state.favorites.has(dom.dataset.path));
+            });
+            listBox.querySelectorAll(".lgb-lrow").forEach((dom) => {
+              paintFav(dom.querySelector(".lgb-fav"), state.favorites.has(dom.dataset.path));
+            });
+            if (state.source === "favorites") {
+              await refresh({ overridePaths: favoritePathsForView() });
+            }
+            setStatus(
+              t("已撤销取消收藏：恢复 {n} 张", { n: task.entries.length }) +
+                (undoStack.length ? t(" · 还能再撤 {n} 次", { n: undoStack.length }) : "")
+            );
+            return;
+          }
+
+          const res = await apiJson("/local_gallery/trash/restore", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ items: task.entries }),
+          });
+          const restored = (res.restored || []).length;
+          const failed = (res.failed || []).length;
+          // 删除时连带取消的收藏也一并恢复
+          let favBack = 0;
+          if (task.favEntries && task.favEntries.length) {
+            try {
+              await restoreFavorites(task.favEntries);
+              favBack = task.favEntries.length;
+            } catch (err) {
+              /* 收藏恢复失败不影响文件恢复 */
+            }
+          }
+          // 文件回到原位了，列表得重扫一遍才看得到
+          await refresh();
+          setStatus(
+            t("已撤销删除：恢复 {n} 个文件", { n: restored }) +
+              (favBack ? t(" · 收藏也回来了", {}) : "") +
+              (failed ? t("（{n} 个失败）", { n: failed }) : "") +
+              (undoStack.length ? t(" · 还能再撤 {n} 次", { n: undoStack.length }) : ""),
+            { error: failed > 0 }
+          );
+        } catch (err) {
+          undoStack.push(task); // 失败放回去，别把撤销机会弄丢
+          setStatus("撤销失败：{err}", { error: true, vars: { err: err.message || err } });
+        }
+      }
+
       // 「删除选中」下拉：全部 / 只删提示词 / 只删图片
       let delMenuEl = null;
       let delMenuOff = null;
@@ -6278,7 +6403,7 @@ app.registerExtension({
               ? t("这些文件会被【移到回收站】（不是永久删除），连同同名提示词文件一起移走。")
               : t("只把图片移到回收站（不是永久删除），同名提示词文件留在原地。")) +
             "\n" +
-            t("需要恢复时，把回收站里的文件移回原目录即可。") +
+            t("删完按 Ctrl+Z 就能撤销（也可以到回收站里手动移回）。") +
             `\n\n${preview}${more}`,
           okText: withPrompts ? "移到回收站（{n}）" : "删除图片（{n}）",
           okVars: { n: list.length },
@@ -6304,6 +6429,11 @@ app.registerExtension({
             });
             // 删掉的图同时取消收藏，免得收藏页里留着死链
             const favGone = moved.filter((p) => state.favorites.has(p));
+            // 撤销删除时把这几个收藏也一起还原
+            const favGoneMeta = favGone.map((p) => ({
+              path: p,
+              folders: (state.favorites.get(p)?.folders || []).slice(),
+            }));
             if (favGone.length) {
               favGone.forEach((p) => state.favorites.delete(p));
               apiJson("/local_gallery/favorites", {
@@ -6321,6 +6451,7 @@ app.registerExtension({
             renderGrid();
             updateTabCounts();
             if (activeTab === "prompts") renderPrompts({ reset: true });
+            pushTrashUndo(data.moved, favGoneMeta);
             const where = data.trash_dir ? ` → ${data.trash_dir}` : "";
             setStatus(
               t("已移到回收站 {n} 个{moved}", { n: moved.length, moved: "" }) +
@@ -6371,6 +6502,7 @@ app.registerExtension({
             });
             const moved = data.moved || [];
             const failed = data.failed || [];
+            pushTrashUndo(moved);
             if (!moved.length) {
               throw new Error(
                 failed.map((f) => f.error).filter(Boolean).join("；") || "没有文件被移走"
@@ -8860,6 +8992,7 @@ app.registerExtension({
       async function toggleFavorite(item, dom) {
         if (!item?.path) return;
         const wasFav = state.favorites.has(item.path);
+        const favMeta = wasFav ? state.favorites.get(item.path) : null;
         const prompt = state.promptCache.get(item.path)?.prompt || "";
 
         // 先乐观更新，失败再回滚
@@ -8880,6 +9013,9 @@ app.registerExtension({
             body: JSON.stringify(payload),
           });
           state.favorites = new Map((data.items || []).map((it) => [it.path, it]));
+          if (wasFav) {
+            pushFavUndo([{ path: item.path, folders: (favMeta?.folders || []).slice() }]);
+          }
           setStatus(wasFav ? t("已取消收藏：{name}", { name: item.name }) : t("已收藏：{name}", { name: item.name }));
         } catch (err) {
           if (wasFav) state.favorites.set(item.path, { path: item.path });
@@ -8908,6 +9044,11 @@ app.registerExtension({
       async function unfavoritePaths(paths) {
         const list = [...new Set((paths || []).filter(Boolean))];
         if (!list.length) return;
+        // 先记下它们原本在哪些收藏夹，撤销时要还原
+        const before = list.map((p) => ({
+          path: p,
+          folders: (state.favorites.get(p)?.folders || []).slice(),
+        }));
         try {
           const data = await apiJson("/local_gallery/favorites", {
             method: "POST",
@@ -8916,6 +9057,7 @@ app.registerExtension({
           });
           // 收藏 + 收藏夹数量一次同步（response 里带 items）
           applyFolderState(data);
+          pushFavUndo(before);
           reloadFolders();
           const gone = new Set(data.removed || list);
           list.forEach((path) => {
@@ -10087,6 +10229,26 @@ app.registerExtension({
       }
       /* ---------------- 事件 ---------------- */
       btnSettings.addEventListener("click", () => openSettings());
+
+      /* Ctrl/⌘ + Z：撤销最近一次「移到回收站」。
+         只把焦点在面板里（或鼠标悬在面板上）时拦下来，别抢 ComfyUI 画布自己的撤销 */
+      document.addEventListener(
+        "keydown",
+        (evt) => {
+          if (!(evt.ctrlKey || evt.metaKey) || evt.shiftKey || evt.altKey) return;
+          if (String(evt.key).toLowerCase() !== "z") return;
+          const el = evt.target;
+          if (el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.isContentEditable)) {
+            return; // 输入框里交给浏览器自己的撤销
+          }
+          if (!wrap.contains(el) && !wrap.matches(":hover")) return;
+          if (!undoStack.length) return;
+          evt.preventDefault();
+          evt.stopPropagation();
+          undoLast();
+        },
+        true
+      );
       btnTrash.addEventListener("click", () => openTrash());
       btnDelSel.addEventListener("click", () => {
         // 提示词页选的是提示词，这里就只删提示词文件，别顺手把图片带走

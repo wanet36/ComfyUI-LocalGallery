@@ -1064,9 +1064,16 @@ def trash_images(
             failed.append({"path": str(src), "error": f"移动失败：{exc}"})
             continue
 
-        entry = {"path": str(src), "to": str(target), "sidecars": []}
+        item_id = _new_item_id()
+        entry = {
+            "path": str(src),
+            "to": str(target),
+            "batch": batch.name,
+            "id": item_id,
+            "sidecars": [],
+        }
         item = {
-            "id": _new_item_id(),
+            "id": item_id,
             "kind": "image",
             "original": str(src),
             "stored": _stored_rel(batch, target),
@@ -1193,11 +1200,14 @@ def trash_prompts(paths: list[str], batch_name: str | None = None) -> dict:
         except (OSError, shutil.Error) as exc:
             failed.append({"path": str(src), "error": f"移动失败：{exc}"})
             continue
-        moved.append({"path": str(src), "to": str(target)})
+        item_id = _new_item_id()
+        moved.append(
+            {"path": str(src), "to": str(target), "batch": batch.name, "id": item_id}
+        )
         _append_manifest(
             batch,
             {
-                "id": _new_item_id(),
+                "id": item_id,
                 "kind": "prompt",
                 "original": str(src),
                 "stored": _stored_rel(batch, target),
