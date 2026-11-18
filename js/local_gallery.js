@@ -3324,7 +3324,9 @@ const I18N_EN = {
   "这些路径下没有图片": "No images under these paths",
   "选中的 {n} 张": "{n} selected",
   "当前列表 {n} 张": "{n} in list",
-  "当前列表 {all} 张 · 已选 {sel} 张 · 原图默认保留": "{all} in list · {sel} selected · originals kept",
+  "将转换：选中的 {sel} 张（当前列表 {all} 张）· 原图默认保留":
+    "Converting the {sel} selected (list has {all}) · originals kept",
+  "将转换：当前列表 {all} 张 · 原图默认保留": "Converting all {all} in the list · originals kept",
   "当前列表没有图片 —— 先在图库加一个文件夹": "No images in the list — add a folder in Gallery first",
   "成功 {ok} 张": "{ok} converted",
   "失败 {n} 张": "{n} failed",
@@ -8613,7 +8615,6 @@ app.registerExtension({
 
       const conv = {
         built: false,
-        scope: "all", // selected | all
         job: null,
         since: 0,
         timer: null,
@@ -8625,25 +8626,27 @@ app.registerExtension({
         return { selected: state.selected.size, all: visibleItems().length };
       }
 
+      // 不再让用户选范围：选了图就只转选中的，没选就是当前列表
+      function convScope() {
+        return state.selected.size ? "selected" : "all";
+      }
+
       // 选中数 / 列表数变了，页面上的按钮和提示跟着变
       function syncConvertPage() {
         const ui = conv.ui;
         if (!ui) return;
         const { selected, all } = convCounts();
-        if (conv.scope === "selected" && !selected) conv.scope = all ? "all" : "selected";
-        setTpl(ui.btnSelected, "选中的 {n} 张", { n: selected });
-        setTpl(ui.btnAll, "当前列表 {n} 张", { n: all });
-        ui.btnSelected.disabled = !selected;
-        ui.btnAll.disabled = !all;
-        ui.scopeSeg.paint(conv.scope);
+        const scope = convScope();
         setTpl(
           ui.hint,
           all
-            ? "当前列表 {all} 张 · 已选 {sel} 张 · 原图默认保留"
+            ? scope === "selected"
+              ? "将转换：选中的 {sel} 张（当前列表 {all} 张）· 原图默认保留"
+              : "将转换：当前列表 {all} 张 · 原图默认保留"
             : "当前列表没有图片 —— 先在图库加一个文件夹",
           { all, sel: selected }
         );
-        ui.start.disabled = !!conv.job || !(conv.scope === "selected" ? selected : all);
+        ui.start.disabled = !!conv.job || !(scope === "selected" ? selected : all);
       }
 
       function ensureConvertPage() {
@@ -8690,22 +8693,6 @@ app.registerExtension({
           paint(value);
           return { wrap, btns, paint };
         }
-
-        /* —— 范围 —— */
-        const scopeSeg = segGroup(
-          [
-            ["selected", "选中的 0 张"],
-            ["all", "当前列表 0 张"],
-          ],
-          conv.scope,
-          (key) => {
-            conv.scope = key;
-            syncConvertPage();
-            renderPreview();
-          }
-        );
-        const secScope = el("section", "lgb-set-sec");
-        secScope.append(el("div", "ttl", "范围"), rowWith(el("span", "lb wide", "处理"), scopeSeg.wrap));
 
         /* —— 格式 —— */
         const fmtSel = document.createElement("select");
@@ -8911,13 +8898,13 @@ app.registerExtension({
 
         let previewSig = "";
         function convTargets() {
-          return conv.scope === "selected"
+          return convScope() === "selected"
             ? [...state.selected.keys()]
             : visibleItems().map((it) => it.path);
         }
         function renderPreview(force = false) {
           const paths = convTargets();
-          const sig = `${conv.scope}|${paths.length}|${paths.slice(0, PREVIEW_MAX).join("\n")}`;
+          const sig = `${convScope()}|${paths.length}|${paths.slice(0, PREVIEW_MAX).join("\n")}`;
           if (!force && sig === previewSig) return;
           previewSig = sig;
           previewList.replaceChildren();
@@ -8942,7 +8929,7 @@ app.registerExtension({
           previewHint.style.display = paths.length ? "" : "none";
         }
 
-        body.append(secScope, secFormat, secComp, secScale, secOut, secPreview);
+        body.append(secFormat, secComp, secScale, secOut, secPreview);
 
         /* 参数区滚轮：有溢出就自己滚，并且别让事件继续冒泡到画布
            （否则滚轮滚到面板上会把 ComfyUI 画布放大缩小）。 */
@@ -8998,9 +8985,6 @@ app.registerExtension({
           renderPreview,
           hint: hintEl,
           start: startBtn,
-          scopeSeg,
-          btnSelected: scopeSeg.btns.get("selected"),
-          btnAll: scopeSeg.btns.get("all"),
           run: secRun,
           bar: barFill,
           count: countEl,
@@ -9034,7 +9018,7 @@ app.registerExtension({
         }
 
         function collectPaths() {
-          return conv.scope === "selected" ? [...state.selected.keys()] : visibleItems().map((it) => it.path);
+          return convScope() === "selected" ? [...state.selected.keys()] : visibleItems().map((it) => it.path);
         }
 
         function setRunning(on) {
