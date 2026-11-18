@@ -5076,7 +5076,8 @@ app.registerExtension({
       }
 
       function renderSourceBar() {
-        const showable = activeTab === "gallery" || activeTab === "favorites";
+        // 文件夹筛选只在图库页：收藏页是跨目录的清单，按目录筛没有意义
+        const showable = activeTab === "gallery";
         const roots = state.roots || [];
         if (!showable || !roots.length) {
           srcBar.style.display = "none";
@@ -5187,8 +5188,9 @@ app.registerExtension({
       }
 
       function visibleItems() {
-        // 先按「文件夹」筛：选了某个根目录就只留它下面的图
-        const base = state.root
+        // 先按「文件夹」筛：选了某个根目录就只留它下面的图（收藏页不参与，那里是跨目录清单）
+        const byRoot = state.root && state.source !== "favorites";
+        const base = byRoot
           ? state.items.filter((it) => (it.root || "") === state.root)
           : state.items;
         const keywords = state.filter.toLowerCase().split(/\s+/).filter(Boolean);
