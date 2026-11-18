@@ -2647,6 +2647,14 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   min-width: 52px;
 }
 /* 运行参数那几行：标签留够宽度，数字框收窄靠右，单位跟在后面 */
+/* 设置里的「每行几张」滑块：比头部那颗宽一些 */
+.lgb-settings .lgb-set-row .lgb-size {
+  color: var(--lg-text-2);
+  font-size: 12px;
+}
+.lgb-settings .lgb-set-row .lgb-size .lgb-slider {
+  width: 150px;
+}
 .lgb-settings .lgb-set-row .lb.wide {
   min-width: 86px;
 }
@@ -4360,9 +4368,11 @@ app.registerExtension({
       sizeInput.className = "lgb-slider";
       setTitle(sizeInput, "每行显示几张（列数）");
       const sizeVal = el("span", "lgb-count", "");
-      sizeWrap.append(tspan("每行"), sizeInput, sizeVal, tspan("张"));
+      // 设置行里已经有「每行张数」标签，这里只留 滑块 + 数字 + 单位
+      sizeWrap.append(sizeInput, sizeVal, tspan("张"));
 
-      head.append(rowTabs, el("div", "lgb-head-spacer"), sizeWrap);
+      // 「每行几张」滑块已挪进设置面板，这里不再挂到头部
+      head.append(rowTabs, el("div", "lgb-head-spacer"));
 
       /* 路径栏：浏览回到主面板，设置收成一个图标 */
       const rowAdd = el("div", "lgb-row lgb-bar");
@@ -4382,20 +4392,17 @@ app.registerExtension({
       const btnUnfav = el("button", "lgb-btn sm", "取消收藏");
       btnUnfav.style.display = "none";
       setTitle(btnUnfav, "把选中的图从收藏里移除（想加回来再点 ☆ 就行）");
-      const btnFavFolder = el("button", "lgb-btn sm", "加入收藏夹");
-      btnFavFolder.style.display = "none";
-      setTitle(btnFavFolder, "把选中的图片放进收藏夹（可以顺手新建一个）");
-      // 删除选中：点开选「全部 / 只删提示词 / 只删图片」
+      // 删除选中：只在提示词页出现（图片页的删除走右键菜单）
       const btnDelSel = el("button", "lgb-btn sm warn lgb-delbtn");
       btnDelSel.style.display = "none";
       const delSelLabel = el("span", "", "删除选中");
       btnDelSel.append(delSelLabel);
-      setTitle(btnDelSel, "点开选择：图片 + 提示词一起删 / 只删提示词 / 只删图片");
+      setTitle(btnDelSel, "把选中的提示词文件移到回收站，图片保留");
       const btnAll = el("button", "lgb-btn sm", "全选");
       setTitle(btnAll, "把当前列表里的图全部选中（单选模式下会自动切到多选）");
       const btnNone = el("button", "lgb-btn sm", "清空选择");
       setTitle(btnNone, "取消全部选中");
-      bulk.append(btnUnfav, btnFavFolder, btnDelSel, btnAll, btnNone);
+      bulk.append(btnUnfav, btnDelSel, btnAll, btnNone);
 
       rowAdd.append(
         btnSettings,
@@ -4530,20 +4537,7 @@ app.registerExtension({
       const selLabel = el("span", "lgb-selpill", "已选 0");
       const statusLabel = el("span", "lgb-status", "悬停缩略图可预览提示词");
       statusLabel.dataset.i18nStatus = "悬停缩略图可预览提示词";
-      const btnCopy = el("button", "lgb-btn sm", "复制提示词");
-      // 反推 / 转换快捷入口，放在「全选」左边
-      const btnJumpReverse = el("button", "lgb-btn sm", "反推");
-      setTitle(btnJumpReverse, "跳到反推页：对选中的图跑 WD14 / TIPO");
-      const btnJumpConvert = el("button", "lgb-btn sm", "转换");
-      setTitle(btnJumpConvert, "跳到转换压缩页：批量转格式 / 压体积 / 缩放");
-      rowFoot.append(
-        modeSwitch,
-        selLabel,
-        statusLabel,
-        btnCopy,
-        btnJumpReverse,
-        btnJumpConvert
-      );
+      rowFoot.append(modeSwitch, selLabel, statusLabel);
 
       /* 单选 / 多选切换：模式存本地，切到单选时把多余的选中项裁掉 */
       function setPickMode(mode) {
@@ -4866,29 +4860,17 @@ app.registerExtension({
         const count = onPrompts ? state.promptSel.size : state.selected.size;
         setTpl(selLabel, onPrompts ? "已选 {n} 条提示词" : "已选 {n}", { n: count });
         selLabel.classList.toggle("on", count > 0);
-        btnCopy.style.display = count ? "" : "none";
         paintPromptSelection();
         // 转换页上的「范围」跟着选中数变
         syncConvertPage();
-        // 批量删除：图库/收藏按图片选中数，提示词页两档按提示词选中数
-        const onFavorites = activeTab === "favorites";
+        // 批量删除只在提示词页出现，且只删提示词文件（图片页用右键菜单）
         const bulkCount = onPrompts ? state.promptSel.size : state.selected.size;
-        // 收藏页不摆删除（那里的批量动作是「取消收藏」）
-        btnDelSel.style.display = !onFavorites && bulkCount ? "" : "none";
+        btnDelSel.style.display = onPrompts && bulkCount ? "" : "none";
         setTpl(delSelLabel, bulkCount ? "删除选中 ({n})" : "删除选中", { n: bulkCount });
-        setTitle(
-          btnDelSel,
-          onPrompts
-            ? "把选中的提示词文件移到回收站，图片保留（可随时恢复）"
-            : "点开选择：图片 + 提示词一起删 / 只删提示词 / 只删图片"
-        );
         const favFolderCount = onPrompts ? 0 : state.selected.size;
-        btnUnfav.style.display = onFavorites && favFolderCount ? "" : "none";
+        btnUnfav.style.display =
+          activeTab === "favorites" && favFolderCount ? "" : "none";
         setTpl(btnUnfav, favFolderCount ? "取消收藏 ({n})" : "取消收藏", { n: favFolderCount });
-        btnFavFolder.style.display = favFolderCount ? "" : "none";
-        setTpl(btnFavFolder, favFolderCount ? "加入收藏夹 ({n})" : "加入收藏夹", {
-          n: favFolderCount,
-        });
         updateTabCounts();
         // 正在看反推页时，改了选中就跟着换列表（跑任务中不打断）
         if (activeTab === "reverse" && !revRunning()) ensureReversePage();
@@ -5795,16 +5777,12 @@ app.registerExtension({
         pagePrompts.classList.toggle("off", !isPrompts);
         pageReverse.classList.toggle("off", !isReverse);
         pageConvert.classList.toggle("off", !isConvert);
-        // 缩略图密度对两个网格页（图库 / 收藏）都有效
-        sizeWrap.style.display = isGridView ? "" : "none";
+        // 缩略图密度改到设置里了，这里不再按页签显隐
         // 路径栏（浏览 / 设置 / 刷新 / 回收站）只在能看图的两个页签出现；
         // 提示词页把整块批量删除挪进提示词栏，那里也有一颗「删除选中」
         rowAdd.style.display = isGridView ? "" : "none";
         // 收藏夹栏跟着页签走（不在收藏页就收起）
         renderChips();
-        // 底栏这两个按钮兼做「当前在哪页」的指示
-        btnJumpReverse.classList.toggle("on", isReverse);
-        btnJumpConvert.classList.toggle("on", isConvert);
         if (isPrompts) promptBar.append(bulk);
         else if (isGridView) rowAdd.insertBefore(bulk, btnTrash);
         hideTip();
@@ -6474,102 +6452,6 @@ app.registerExtension({
         }
       }
 
-      // 「删除选中」下拉：全部 / 只删提示词 / 只删图片
-      let delMenuEl = null;
-      let delMenuOff = null;
-
-      function closeDeleteMenu() {
-        if (delMenuOff) {
-          delMenuOff();
-          delMenuOff = null;
-        }
-        if (delMenuEl) {
-          delMenuEl.remove();
-          delMenuEl = null;
-        }
-        btnDelSel.classList.remove("open");
-      }
-
-      /* anchor：不传就贴在底栏「删除选中」按钮下面；右键菜单传鼠标坐标 */
-      /* 三个删除口径：底栏「删除选中」和右键菜单的二级菜单共用这一份 */
-      function buildDeleteColumn(paths, close) {
-        const col = el("div", "lgb-sortcol");
-        const byPath = new Map(state.items.map((it) => [it.path, it]));
-        const promptCount = paths.filter((path) => byPath.get(path)?.has_prompt).length;
-
-        const mk = (label, hint, { danger = false, disabled = false, vars = null } = {}, run) => {
-          const btn = el("button", `opt${danger ? " danger" : ""}`);
-          setTpl(btn, label, vars);
-          setTitle(btn, hint);
-          if (disabled) {
-            btn.disabled = true;
-          } else {
-            btn.addEventListener("click", (evt) => {
-              evt.stopPropagation();
-              close();
-              run();
-            });
-          }
-          col.append(btn);
-        };
-
-        mk(
-          "删除全部（图片 + 提示词）",
-          "把选中的图片连同同名提示词一起移到回收站",
-          { danger: true },
-          () => deletePaths(paths)
-        );
-        mk(
-          promptCount ? "删除提示词（{n} 个）" : "删除提示词（没有同名提示词）",
-          "只移走同名提示词文件，图片保留",
-          { disabled: !promptCount, vars: promptCount ? { n: promptCount } : null },
-          () => deletePrompts(paths)
-        );
-        mk(
-          "删除图片（提示词保留）",
-          "只移走图片，同名提示词文件留在原地",
-          { danger: true },
-          () => deletePaths(paths, { withPrompts: false })
-        );
-        return col;
-      }
-
-      function openDeleteMenu() {
-        if (delMenuEl) {
-          closeDeleteMenu();
-          return;
-        }
-        const paths = [...state.selected.keys()];
-        if (!paths.length) return;
-
-        const panel = el("div", "lgb-sortmenu lgb-delmenu");
-        panel.dataset.theme = wrap.dataset.theme || "dark";
-        panel.append(buildDeleteColumn(paths, closeDeleteMenu));
-        document.body.appendChild(panel);
-
-        const rect = btnDelSel.getBoundingClientRect();
-        const pad = 8;
-        const box = panel.getBoundingClientRect();
-        const left = Math.max(pad, Math.min(rect.left, window.innerWidth - box.width - pad));
-        panel.style.left = `${left}px`;
-        panel.style.top = `${rect.bottom + 6}px`;
-        btnDelSel.classList.add("open");
-
-        const onDown = (evt) => {
-          if (panel.contains(evt.target) || btnDelSel.contains(evt.target)) return;
-          closeDeleteMenu();
-        };
-        const onKey = (evt) => {
-          if (evt.key === "Escape") closeDeleteMenu();
-        };
-        document.addEventListener("pointerdown", onDown, true);
-        window.addEventListener("keydown", onKey);
-        delMenuOff = () => {
-          document.removeEventListener("pointerdown", onDown, true);
-          window.removeEventListener("keydown", onKey);
-        };
-        delMenuEl = panel;
-      }
 
       async function deletePaths(paths, { onRemoved, withPrompts = true } = {}) {
         const list = [...new Set(paths.filter(Boolean))];
@@ -7864,11 +7746,17 @@ app.registerExtension({
         const rowHints = el("div", "lgb-set-row");
         rowHints.append(el("span", "lb", "文字说明"), chkHints.label);
 
+        /* 每行几张：滑块挪到设置里，跟主题放一起 */
+        const rowCols = el("div", "lgb-set-row");
+        rowCols.append(el("span", "lb", "每行张数"), sizeWrap);
+        sizeWrap.classList.add("in-settings");
+
         secTheme.append(
           el("div", "ttl", "外观"),
           rowLang,
           rowTheme,
           rowHints,
+          rowCols,
           el("p", "desc", "「跟随 ComfyUI」会随 ComfyUI 的深浅色自动切换；另外两个是强制。")
         );
 
@@ -10646,26 +10534,16 @@ app.registerExtension({
       );
       btnTrash.addEventListener("click", () => openTrash());
       btnDelSel.addEventListener("click", () => {
-        // 提示词页选的是提示词，这里就只删提示词文件，别顺手把图片带走
-        if (activeTab === "prompts") {
-          const picked = [...state.promptSel.keys()];
-          if (picked.length) deletePrompts(picked);
-          return;
-        }
-        if (!state.selected.size) return;
-        openDeleteMenu();
-      });
-      btnFavFolder.addEventListener("click", () => {
-        if (!state.selected.size) return;
-        openFolderPicker([...state.selected.keys()]);
+        // 只服务提示词页：删的是提示词文件，别顺手把图片带走
+        if (activeTab !== "prompts") return;
+        const picked = [...state.promptSel.keys()];
+        if (picked.length) deletePrompts(picked);
       });
       btnUnfav.addEventListener("click", () => {
         if (!state.selected.size) return;
         unfavoritePaths([...state.selected.keys()]);
       });
 
-      btnJumpReverse.addEventListener("click", () => switchTab("reverse"));
-      btnJumpConvert.addEventListener("click", () => switchTab("convert"));
       tabGallery.addEventListener("click", () => switchTab("gallery"));
       tabFavorites.addEventListener("click", () => switchTab("favorites"));
       tabReverse.addEventListener("click", () => switchTab("reverse"));
@@ -10759,7 +10637,6 @@ app.registerExtension({
         paintSelection();
         setStatus("已清空选择");
       });
-      btnCopy.addEventListener("click", () => copySelectedPrompts());
 
       /* ---------------- 初始化 ---------------- */
       applyCols(cols, { persist: false });

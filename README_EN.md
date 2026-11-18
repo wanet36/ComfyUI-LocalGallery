@@ -56,11 +56,19 @@ Five bands, top to bottom:
 
 | Area | What's there |
 |---|---|
-| **Tab bar** | `Gallery / Favorites / Prompts / Caption / Convert` (counts live in the tooltip, not on the buttons) plus the "columns" slider |
-| **Path bar** (Gallery / Favorites) | Settings (holds the whole *Browse local paths* block: Choose folder / in-panel browser), ⟳ rescan, the batch group (`Delete selected ▾` / `Select all` / `Clear selection`; on Favorites it becomes `Unfavorite (N)` + `Add to folder (N)`), Trash |
+| **Tab bar** | `Gallery / Favorites / Prompts / Caption / Convert` (counts live in the tooltip, not on the buttons) |
+| **Path bar** (Gallery / Favorites) | Settings (holds the whole *Browse local paths* block: Choose folder / in-panel browser), ⟳ rescan, the batch group (`Select all` / `Clear selection`; Favorites adds `Unfavorite (N)`), Trash |
 | **Filter row** | **Grid / list slider** on the left, then **Group by day**, sort button, search-scope button, search box, `hits / total` (Include subfolders / Only with prompt live in Settings) |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page). A **list mode** is one click away: one image per row with thumbnail, name, resolution/size and prompt tags |
-| **Footer** | **Single / multi-select slider** (click either side and the knob slides over), selection count, status text, Copy prompts, **Caption / Convert** shortcuts (the active tab is highlighted) |
+| **Footer** | **Single / multi-select slider** (click either side and the knob slides over), selection count, status text |
+
+### Right-click menu
+
+Right-click a thumbnail (or a list row): `Copy prompts` / `Add to folder` / `Caption` / `Convert` / `Delete…▸`.
+
+- Right-clicking an unselected image selects just it first; if it's already inside the selection, the action applies to the whole selection
+- `Delete…` is a second-level menu that opens beside the first one (also on click) and offers the same three options as before: both / prompt only / image only
+- These five actions used to sit in the footer and the path bar; the panel is now cleaner. The Prompts tab keeps its own **Delete selected (N)** button
 
 ### Adding paths
 
@@ -93,7 +101,7 @@ Paths can be folders, single images, or a mix. The same file reached through sev
 - Hover to show the full prompt (title line: `filename · resolution · size`)
 - Hovering also reveals the action group: `⧉` copy this image's prompt / `☆` favorite / `⤢` preview / `🗑` delete
   - Copy takes just that one image's prompt and confirms in the status bar; when there's no matching `.txt` the button dims and clicking explains why
-  - Above 8 per row (column width < 96px) the action group drops the copy button so it never crowds the thumbnail — use the footer's Copy prompts or the Prompts tab instead
+  - Above 8 per row (column width < 96px) the action group drops the copy button so it never crowds the thumbnail — use the right-click menu or the Prompts tab instead
 - `TXT` badge: green = prompt file exists, grey `—` = none
 - The search box filters by file name / relative path; separate keywords with spaces (all must match)
 
@@ -105,7 +113,7 @@ Paths can be folders, single images, or a mix. The same file reached through sev
 
 Default tab. Filtering, searching, selecting and bulk delete live here — its path bar (and the bulk delete buttons in it) is shared with the Favorites tab.
 
-Once images are selected, **`Delete selected ▾`** in the path bar offers three options (all go to the Trash, restorable):
+Once images are selected, **right-click** one of them and open the **`Delete…`** submenu — three options, all restorable from the Trash:
 
 | Option | What it does |
 |---|---|
@@ -134,7 +142,7 @@ Aggregates favorites across folders, independent of the current path list.
 - The export **scope** can be `All favorites` / `Unfiled` / a single folder — the dropdown shows counts and the button number follows it (greyed out when the scope is empty)
 - **Favorite folders**: a chip row at the top of the Favorites tab — `All` / `Unfiled` / each folder / `+ New folder`. Clicking one filters the grid to that folder
 - An image can live in several folders; duplicate names are rejected and names are capped at 40 characters
-- **Bulk add**: select images in Gallery or Favorites → **Add to folder (N)** in the path bar → pick a folder (or create one right there). Images that were not favorited get favorited automatically
+- **Bulk add**: select images in Gallery or Favorites → **right-click → `Add to folder`** → pick a folder (or create one right there). Images that were not favorited get favorited automatically
 - Right-click a folder chip to delete the category — the images **stay favorited**
 - With images selected on the Favorites tab, the path-bar button becomes **Unfavorite (N)** — they leave the favorites list, files are untouched, and ☆ adds them back
 - **Ctrl + Z undoes** deleting (move to Trash), favoriting and unfavoriting, newest first, up to 20 steps:/n  - undo a delete → files move back, and their favorites come back too
@@ -235,7 +243,7 @@ Open it with the ⚙ button in the path bar. Four groups:
 
 | Group | Contents |
 |---|---|
-| **Appearance** | Interface language (中文 / English), theme (follow ComfyUI / light / dark), show descriptions |
+| **Appearance** | Interface language (中文 / English), theme (follow ComfyUI / light / dark), show descriptions, **columns per row** slider (moved here from the tab bar) |
 | **Favorites** | Export target folder + export button |
 | **Runtime** | Thumbnail size / quality, scan limit, max image side, recent folders, trash folder, allow deleting, auto-pick when empty |
 | **Advanced** | Allowed roots (whitelist); empty = no restriction |
