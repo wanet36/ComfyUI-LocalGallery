@@ -937,17 +937,19 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   font-size: 11px;
 }
 
-/* 右键菜单：复用排序浮层的壳，只收窄一点 */
+/* 右键菜单：复用排序浮层的壳，宽度跟着文字走，不留右侧空白 */
 .lgb-ctxmenu {
   z-index: 95;
   padding: 5px;
-  min-width: 168px;
+  width: max-content;
+  min-width: 0;
+  max-width: 280px;
 }
 .lgb-ctxmenu .lgb-sortcol {
   min-width: 0;
 }
 .lgb-ctxmenu .cap {
-  max-width: 260px;
+  max-width: 240px;
   padding: 4px 8px 6px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -957,6 +959,7 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
 }
 .lgb-ctxmenu .opt {
   height: 29px;
+  padding: 0 8px;
   font-size: 12.5px;
 }
 .lgb-ctxmenu .opt .lgb-ico {
@@ -974,10 +977,10 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   background: var(--lg-danger-soft);
   color: var(--lg-danger);
 }
-/* 「删除…」是二级菜单的父项：右边挂个 ▸，悬停/点击在旁边展开 */
+/* 「删除…」是二级菜单的父项：文字后面紧跟 ▸，不再甩到最右边 */
 .lgb-ctxmenu .opt.sub .sub-caret {
-  margin-left: auto;
-  padding-left: 10px;
+  margin-left: 5px;
+  padding-left: 0;
   font-size: 9px;
   opacity: 0.55;
 }
