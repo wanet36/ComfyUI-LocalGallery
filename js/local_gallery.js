@@ -967,6 +967,13 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   margin: 4px 2px;
   background: var(--lg-line);
 }
+.lgb-ctxmenu .opt.danger {
+  color: var(--lg-danger);
+}
+.lgb-ctxmenu .opt.danger:hover {
+  background: var(--lg-danger-soft);
+  color: var(--lg-danger);
+}
 
 /* 收藏夹 chips：全部 / 未分类 / 各收藏夹 / ＋新建 */
 .lgb-chip.lgb-folderchip {
@@ -6463,7 +6470,8 @@ app.registerExtension({
         btnDelSel.classList.remove("open");
       }
 
-      function openDeleteMenu() {
+      /* anchor：不传就贴在底栏「删除选中」按钮下面；右键菜单传鼠标坐标 */
+      function openDeleteMenu(anchor = null) {
         if (delMenuEl) {
           closeDeleteMenu();
           return;
@@ -6513,13 +6521,26 @@ app.registerExtension({
         document.body.appendChild(panel);
 
         const rect = btnDelSel.getBoundingClientRect();
-        const left = Math.max(8, Math.min(rect.left, window.innerWidth - panel.offsetWidth - 8));
-        panel.style.left = `${left}px`;
-        panel.style.top = `${rect.bottom + 6}px`;
-        btnDelSel.classList.add("open");
+        const pad = 8;
+        const box = panel.getBoundingClientRect();
+        let left;
+        let top;
+        if (anchor && Number.isFinite(anchor.x)) {
+          left = anchor.x;
+          top = anchor.y + 4;
+          if (left + box.width + pad > window.innerWidth) left = window.innerWidth - box.width - pad;
+          if (top + box.height + pad > window.innerHeight) top = anchor.y - box.height - 4;
+        } else {
+          left = Math.min(rect.left, window.innerWidth - box.width - pad);
+          top = rect.bottom + 6;
+        }
+        panel.style.left = `${Math.max(pad, left)}px`;
+        panel.style.top = `${Math.max(pad, top)}px`;
+        if (!anchor) btnDelSel.classList.add("open");
 
+        const origin = anchor ? panel : btnDelSel;
         const onDown = (evt) => {
-          if (panel.contains(evt.target) || btnDelSel.contains(evt.target)) return;
+          if (panel.contains(evt.target) || origin.contains(evt.target)) return;
           closeDeleteMenu();
         };
         const onKey = (evt) => {
@@ -9026,6 +9047,9 @@ app.registerExtension({
         hideTip();
         closeSortMenu();
         if (!item) return;
+        // 「删除…」要在这张菜单关掉后再开一个，位置沿用鼠标点
+        const menuX = evt.clientX;
+        const menuY = evt.clientY;
 
         // 右键落在没选中的图上：先只选它（跟资源管理器一致）；
         // 已经在选中的范围里，就对整个选择生效，和底栏按钮一致
@@ -9086,6 +9110,14 @@ app.registerExtension({
           switchTab("reverse"), { iconName: "text" });
         addItem("转换", "跳到转换压缩页：批量转格式 / 压体积 / 缩放", () =>
           switchTab("convert"), { iconName: "convert" });
+
+        // 收藏页没有「删除选中」（那里的批量动作是取消收藏），这里也不摆删除
+        if (activeTab !== "favorites") {
+          col.append(el("div", "sep"));
+          const delBtn = addItem("删除…", "移到回收站：可选图片 + 提示词 / 只删提示词 / 只删图片", () =>
+            openDeleteMenu({ x: menuX, y: menuY }), { iconName: "trash" });
+          delBtn.classList.add("danger");
+        }
 
         panel.append(col);
         document.body.appendChild(panel);
