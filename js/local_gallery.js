@@ -3270,7 +3270,6 @@ const I18N_EN = {
   "把选中的两张图放到对比页：滑块 / 并排 / 差异": "Open the two selected images on the compare page: wipe / side by side / difference",
   "在文件夹中显示": "Show in folder",
   "在资源管理器里定位这张图": "Reveal this image in Explorer",
-  "打开这些图所在的文件夹（最多 3 个窗口）": "Open the folders holding these images (at most 3 windows)",
   "已在资源管理器里定位 {name}": "Revealed {name} in Explorer",
   "已打开 {n} 个文件所在的文件夹": "Opened the folder(s) for {n} files",
   "已打开前 {n} 个文件夹，另有 {more} 个没打开":
@@ -9887,12 +9886,11 @@ app.registerExtension({
             cmpSetPair(paths);
           }, { iconName: "compare" });
         }
-        addItem(
-          "在文件夹中显示",
-          single ? "在资源管理器里定位这张图" : "打开这些图所在的文件夹（最多 3 个窗口）",
-          () => revealPaths(paths),
-          { iconName: "folder" }
-        );
+        // 只在单张时给「在文件夹中显示」：多张跨目录会开好几个窗口，没什么意义
+        if (single) {
+          addItem("在文件夹中显示", "在资源管理器里定位这张图", () =>
+            revealPaths(paths), { iconName: "folder" });
+        }
 
         // 二级菜单：删除（图片 + 提示词 / 只删提示词 / 只删图片）
         const pad = 8;
