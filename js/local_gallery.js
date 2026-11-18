@@ -974,6 +974,23 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   background: var(--lg-danger-soft);
   color: var(--lg-danger);
 }
+/* 「删除…」是二级菜单的父项：右边挂个 ▸，悬停/点击在旁边展开 */
+.lgb-ctxmenu .opt.sub .sub-caret {
+  margin-left: auto;
+  padding-left: 10px;
+  font-size: 9px;
+  opacity: 0.55;
+}
+.lgb-ctxmenu .opt.sub.open {
+  background: var(--lg-danger-soft);
+}
+.lgb-ctxmenu .opt.sub.open .sub-caret {
+  opacity: 1;
+}
+.lgb-submenu {
+  z-index: 96;
+  padding: 5px;
+}
 
 /* 收藏夹 chips：全部 / 未分类 / 各收藏夹 / ＋新建 */
 .lgb-chip.lgb-folderchip {
@@ -6471,30 +6488,25 @@ app.registerExtension({
       }
 
       /* anchor：不传就贴在底栏「删除选中」按钮下面；右键菜单传鼠标坐标 */
-      function openDeleteMenu(anchor = null) {
-        if (delMenuEl) {
-          closeDeleteMenu();
-          return;
-        }
-        const paths = [...state.selected.keys()];
-        if (!paths.length) return;
+      /* 三个删除口径：底栏「删除选中」和右键菜单的二级菜单共用这一份 */
+      function buildDeleteColumn(paths, close) {
+        const col = el("div", "lgb-sortcol");
         const byPath = new Map(state.items.map((it) => [it.path, it]));
         const promptCount = paths.filter((path) => byPath.get(path)?.has_prompt).length;
-
-        const panel = el("div", "lgb-sortmenu lgb-delmenu");
-        panel.dataset.theme = wrap.dataset.theme || "dark";
-        const col = el("div", "lgb-sortcol");
 
         const mk = (label, hint, { danger = false, disabled = false, vars = null } = {}, run) => {
           const btn = el("button", `opt${danger ? " danger" : ""}`);
           setTpl(btn, label, vars);
           setTitle(btn, hint);
-          if (disabled) btn.disabled = true;
-          else
-            btn.addEventListener("click", () => {
-              closeDeleteMenu();
+          if (disabled) {
+            btn.disabled = true;
+          } else {
+            btn.addEventListener("click", (evt) => {
+              evt.stopPropagation();
+              close();
               run();
             });
+          }
           col.append(btn);
         };
 
@@ -6516,31 +6528,32 @@ app.registerExtension({
           { danger: true },
           () => deletePaths(paths, { withPrompts: false })
         );
+        return col;
+      }
 
-        panel.append(col);
+      function openDeleteMenu() {
+        if (delMenuEl) {
+          closeDeleteMenu();
+          return;
+        }
+        const paths = [...state.selected.keys()];
+        if (!paths.length) return;
+
+        const panel = el("div", "lgb-sortmenu lgb-delmenu");
+        panel.dataset.theme = wrap.dataset.theme || "dark";
+        panel.append(buildDeleteColumn(paths, closeDeleteMenu));
         document.body.appendChild(panel);
 
         const rect = btnDelSel.getBoundingClientRect();
         const pad = 8;
         const box = panel.getBoundingClientRect();
-        let left;
-        let top;
-        if (anchor && Number.isFinite(anchor.x)) {
-          left = anchor.x;
-          top = anchor.y + 4;
-          if (left + box.width + pad > window.innerWidth) left = window.innerWidth - box.width - pad;
-          if (top + box.height + pad > window.innerHeight) top = anchor.y - box.height - 4;
-        } else {
-          left = Math.min(rect.left, window.innerWidth - box.width - pad);
-          top = rect.bottom + 6;
-        }
-        panel.style.left = `${Math.max(pad, left)}px`;
-        panel.style.top = `${Math.max(pad, top)}px`;
-        if (!anchor) btnDelSel.classList.add("open");
+        const left = Math.max(pad, Math.min(rect.left, window.innerWidth - box.width - pad));
+        panel.style.left = `${left}px`;
+        panel.style.top = `${rect.bottom + 6}px`;
+        btnDelSel.classList.add("open");
 
-        const origin = anchor ? panel : btnDelSel;
         const onDown = (evt) => {
-          if (panel.contains(evt.target) || origin.contains(evt.target)) return;
+          if (panel.contains(evt.target) || btnDelSel.contains(evt.target)) return;
           closeDeleteMenu();
         };
         const onKey = (evt) => {
@@ -9047,9 +9060,6 @@ app.registerExtension({
         hideTip();
         closeSortMenu();
         if (!item) return;
-        // 「删除…」要在这张菜单关掉后再开一个，位置沿用鼠标点
-        const menuX = evt.clientX;
-        const menuY = evt.clientY;
 
         // 右键落在没选中的图上：先只选它（跟资源管理器一致）；
         // 已经在选中的范围里，就对整个选择生效，和底栏按钮一致
@@ -9111,19 +9121,93 @@ app.registerExtension({
         addItem("转换", "跳到转换压缩页：批量转格式 / 压体积 / 缩放", () =>
           switchTab("convert"), { iconName: "convert" });
 
+        // 二级菜单：删除（图片 + 提示词 / 只删提示词 / 只删图片）
+        const pad = 8;
+        let delRow = null;
+        let subEl = null;
+        let subTimer = null;
+
+        function closeSub() {
+          if (subTimer) {
+            clearTimeout(subTimer);
+            subTimer = null;
+          }
+          if (subEl) {
+            subEl.remove();
+            subEl = null;
+          }
+          if (delRow) delRow.classList.remove("open");
+        }
+
+        function scheduleCloseSub() {
+          if (subTimer) clearTimeout(subTimer);
+          subTimer = setTimeout(() => {
+            subTimer = null;
+            closeSub();
+          }, 180);
+        }
+
+        function openSub() {
+          if (subTimer) {
+            clearTimeout(subTimer);
+            subTimer = null;
+          }
+          if (subEl || !delRow) return;
+          const sub = el("div", "lgb-sortmenu lgb-delmenu lgb-submenu");
+          sub.dataset.theme = panel.dataset.theme;
+          sub.append(
+            buildDeleteColumn(paths, () => {
+              closeSub();
+              closeCtxMenu();
+            })
+          );
+          document.body.appendChild(sub);
+
+          // 贴着一级菜单右侧展开；右边放不下就翻到左侧，下面放不下就往上顶
+          const rowRect = delRow.getBoundingClientRect();
+          const pRect = panel.getBoundingClientRect();
+          const sRect = sub.getBoundingClientRect();
+          const gap = 2;
+          let sLeft = pRect.right + gap;
+          if (sLeft + sRect.width + pad > window.innerWidth) sLeft = pRect.left - sRect.width - gap;
+          let sTop = rowRect.top - 5;
+          if (sTop + sRect.height + pad > window.innerHeight) {
+            sTop = window.innerHeight - sRect.height - pad;
+          }
+          sub.style.left = `${Math.max(pad, sLeft)}px`;
+          sub.style.top = `${Math.max(pad, sTop)}px`;
+
+          sub.addEventListener("pointerenter", () => {
+            if (subTimer) {
+              clearTimeout(subTimer);
+              subTimer = null;
+            }
+          });
+          sub.addEventListener("pointerleave", scheduleCloseSub);
+          subEl = sub;
+          delRow.classList.add("open");
+        }
+
         // 收藏页没有「删除选中」（那里的批量动作是取消收藏），这里也不摆删除
         if (activeTab !== "favorites") {
           col.append(el("div", "sep"));
-          const delBtn = addItem("删除…", "移到回收站：可选图片 + 提示词 / 只删提示词 / 只删图片", () =>
-            openDeleteMenu({ x: menuX, y: menuY }), { iconName: "trash" });
-          delBtn.classList.add("danger");
+          delRow = el("button", "opt sub danger");
+          delRow.append(icon("trash", 13), tspan("删除…"), el("span", "sub-caret", "▸"));
+          setTitle(delRow, "移到回收站：图片 + 提示词 / 只删提示词 / 只删图片");
+          delRow.addEventListener("pointerenter", () => openSub());
+          delRow.addEventListener("pointerleave", () => scheduleCloseSub());
+          delRow.addEventListener("click", (evt) => {
+            evt.stopPropagation();
+            if (subEl) closeSub();
+            else openSub();
+          });
+          col.append(delRow);
         }
 
         panel.append(col);
         document.body.appendChild(panel);
 
         // 贴在鼠标位置；贴边时往回收，别跑到窗口外
-        const pad = 8;
         const rect = panel.getBoundingClientRect();
         let left = evt.clientX;
         let top = evt.clientY;
@@ -9133,7 +9217,7 @@ app.registerExtension({
         panel.style.top = `${Math.max(pad, top)}px`;
 
         const onDown = (e) => {
-          if (panel.contains(e.target)) return;
+          if (panel.contains(e.target) || (subEl && subEl.contains(e.target))) return;
           closeCtxMenu();
         };
         const onKey = (e) => {
@@ -9148,6 +9232,7 @@ app.registerExtension({
         gridScroll.addEventListener("scroll", closeCtxMenu, { passive: true });
         listBox.addEventListener("scroll", closeCtxMenu, { passive: true });
         ctxMenuOff = () => {
+          closeSub();
           document.removeEventListener("pointerdown", onDown, true);
           window.removeEventListener("keydown", onKey, true);
           window.removeEventListener("resize", closeCtxMenu);
