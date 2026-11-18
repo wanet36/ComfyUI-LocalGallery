@@ -4883,9 +4883,10 @@ app.registerExtension({
       let dragSel = null; // 拖动中的临时状态
       let swallowClickUntil = 0;
 
-      // 坐标基准统一用 grid 的 rect：它是 canvas 的内容原点，随滚动一起动
+      // 坐标基准统一用 canvas 的 rect：它是 marqueeBox 的定位父级，
+      // 网格和列表都在它里面（列表模式下 grid 是 display:none，拿不到 rect）
       function gridPoint(evt) {
-        const rect = grid.getBoundingClientRect();
+        const rect = canvas.getBoundingClientRect();
         return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
       }
 
@@ -4894,8 +4895,6 @@ app.registerExtension({
         if (activeTab !== "gallery" && activeTab !== "favorites") return;
         // 单选模式下不框选：一次只能留一张，拖出一片没有意义
         if (state.pickMode === "single") return;
-        // 列表模式没有矩形可选
-        if (state.view === "list") return;
         // 只从缩略图区域起拖，工具栏 / 筛选栏 / 底栏上的拖动不算框选
         const sc = gridScroll.getBoundingClientRect();
         if (
@@ -4906,8 +4905,10 @@ app.registerExtension({
         ) {
           return;
         }
-        // 卡片右上角那排小图标（复制/收藏/预览/删除）不参与框选
-        if (evt.target.closest?.(".lgb-acts")) return;
+        // 缩略图（.lgb-acts）/ 列表行（.acts）右侧那排小图标不参与框选
+        if (evt.target.closest?.(".lgb-acts, .acts")) return;
+        // 点在滚动条上（target 就是滚动容器本身）不算框选，否则一边拉条一边冒个矩形
+        if (evt.target === gridScroll) return;
         const p = gridPoint(evt);
         dragSel = {
           sx: p.x,
@@ -4928,9 +4929,11 @@ app.registerExtension({
 
       function applyMarquee(box) {
         if (!dragSel) return;
-        const rect = grid.getBoundingClientRect();
+        const rect = canvas.getBoundingClientRect();
         const hits = [];
-        grid.querySelectorAll(".lgb-item").forEach((dom) => {
+        // 网格卡片和列表行都可能出现在 canvas 里（时间分组时还嵌在组容器里），
+        // 统一按类名找，命中顺序就是 DOM 顺序 = 列表顺序
+        canvas.querySelectorAll(".lgb-item, .lgb-lrow").forEach((dom) => {
           const r = dom.getBoundingClientRect();
           const left = r.left - rect.left;
           const top = r.top - rect.top;
@@ -5033,8 +5036,8 @@ app.registerExtension({
         commitSelection();
       }
 
-      // 捕获阶段吞掉框选结束那一下 click
-      grid.addEventListener(
+      // 捕获阶段吞掉框选结束那一下 click（网格和列表都在 canvas 里，挂这里两边都管）
+      canvas.addEventListener(
         "click",
         (evt) => {
           if (performance.now() < swallowClickUntil) {
@@ -9645,6 +9648,8 @@ app.registerExtension({
         const img = document.createElement("img");
         img.loading = "lazy";
         img.decoding = "async";
+        // 关掉原生拖拽，否则按下拖动会变成拖图片，框选直接断掉
+        img.draggable = false;
         img.src = buildUrl("/local_gallery/thumb", { path: item.path, size: 128 });
         img.addEventListener("error", () => {
           img.style.visibility = "hidden";
