@@ -937,6 +937,37 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   font-size: 11px;
 }
 
+/* 右键菜单：复用排序浮层的壳，只收窄一点 */
+.lgb-ctxmenu {
+  z-index: 95;
+  padding: 5px;
+  min-width: 168px;
+}
+.lgb-ctxmenu .lgb-sortcol {
+  min-width: 0;
+}
+.lgb-ctxmenu .cap {
+  max-width: 260px;
+  padding: 4px 8px 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--lg-line);
+  margin-bottom: 4px;
+}
+.lgb-ctxmenu .opt {
+  height: 29px;
+  font-size: 12.5px;
+}
+.lgb-ctxmenu .opt .lgb-ico {
+  opacity: 0.8;
+}
+.lgb-ctxmenu .sep {
+  height: 1px;
+  margin: 4px 2px;
+  background: var(--lg-line);
+}
+
 /* 收藏夹 chips：全部 / 未分类 / 各收藏夹 / ＋新建 */
 .lgb-chip.lgb-folderchip {
   cursor: pointer;
@@ -5849,6 +5880,57 @@ app.registerExtension({
         }
       }
 
+      /* 复制「这一张」的提示词：和缩略图上的小复制按钮同一套逻辑 */
+      async function copyItemPrompt(item) {
+        if (!item) return false;
+        if (!item.has_prompt) {
+          setStatus("这张没有同名提示词，无法复制", { error: true });
+          return false;
+        }
+        const entry = await ensurePrompt(item);
+        const text = (entry && entry.prompt) || "";
+        if (!text) {
+          setStatus("这张的提示词是空的，没有可复制的内容", { error: true });
+          return false;
+        }
+        return copyText(text, "已复制这张的提示词");
+      }
+
+      /* 复制「当前选中」的提示词：和底栏的「复制提示词」按钮同一套逻辑 */
+      async function copySelectedPrompts() {
+        const promptsTab = onPromptsTab();
+        const ordered = [...(promptsTab ? state.promptSel : state.selected).entries()].sort(
+          (a, b) => a[1] - b[1]
+        );
+        if (!ordered.length) {
+          setStatus("先选几张图片，再复制提示词", { error: true });
+          return 0;
+        }
+        const lines = [];
+        for (const [path] of ordered) {
+          if (!state.promptCache.has(path)) {
+            try {
+              const data = await apiJson(
+                `/local_gallery/prompt?path=${encodeURIComponent(path)}`
+              );
+              state.promptCache.set(path, { prompt: data.prompt || "" });
+            } catch (err) {
+              state.promptCache.set(path, { prompt: "" });
+            }
+          }
+          lines.push(state.promptCache.get(path)?.prompt || "");
+        }
+        const text = lines.join("\n\n");
+        try {
+          await navigator.clipboard.writeText(text);
+          setStatus("已复制 {n} 条提示词到剪贴板", { vars: { n: lines.length } });
+        } catch (err) {
+          setStatus("剪贴板不可用，请从控制台手动复制", { error: true });
+          console.log("[LocalGallery] 复制的提示词：\n" + text);
+        }
+        return lines.length;
+      }
+
       function renderPrompts({ reset = true } = {}) {
         const all = promptItems();
         setTpl(promptScope, "{n} 条提示词", { n: all.length });
@@ -8923,6 +9005,126 @@ app.registerExtension({
         sortMenuEl = panel;
       }
 
+      /* ---------------- 缩略图右键菜单 ----------------
+         菜单项跟底栏按钮一一对应：复制提示词 / 加入收藏夹 / 反推 / 转换 */
+      let ctxMenuEl = null;
+      let ctxMenuOff = null;
+
+      function closeCtxMenu() {
+        if (ctxMenuOff) {
+          ctxMenuOff();
+          ctxMenuOff = null;
+        }
+        if (ctxMenuEl) {
+          ctxMenuEl.remove();
+          ctxMenuEl = null;
+        }
+      }
+
+      function openImageMenu(item, evt) {
+        closeCtxMenu();
+        hideTip();
+        closeSortMenu();
+        if (!item) return;
+
+        // 右键落在没选中的图上：先只选它（跟资源管理器一致）；
+        // 已经在选中的范围里，就对整个选择生效，和底栏按钮一致
+        if (!state.selected.has(item.path)) {
+          state.selected.clear();
+          state.selected.set(item.path, 0);
+          state.lastClicked = -1;
+          commitSelection();
+          paintSelection();
+        }
+        const paths = [...state.selected.keys()];
+        const single = paths.length === 1;
+        const target = single ? state.items.find((i) => i.path === paths[0]) || item : null;
+
+        const panel = el("div", "lgb-sortmenu lgb-ctxmenu");
+        panel.dataset.theme = wrap.dataset.theme || "dark";
+        const col = el("div", "lgb-sortcol");
+
+        // 头一行说明这次操作作用在谁身上
+        const head = el("div", "cap");
+        if (single) {
+          head.textContent = item.name;
+          setTitle(head, item.path);
+        } else {
+          setTpl(head, "已选 {n}", { n: paths.length });
+        }
+        col.append(head);
+
+        const addItem = (label, hint, handler, { iconName = "", disabled = false } = {}) => {
+          const btn = el("button", "opt");
+          if (iconName) btn.append(icon(iconName, 13));
+          btn.append(tspan(label));
+          setTitle(btn, hint);
+          if (disabled) {
+            btn.disabled = true;
+          } else {
+            btn.addEventListener("click", () => {
+              closeCtxMenu();
+              Promise.resolve(handler()).catch((err) => {
+                setStatus(String(err && err.message ? err.message : err), { error: true });
+              });
+            });
+          }
+          col.append(btn);
+          return btn;
+        };
+
+        const noPrompt = !!target && !target.has_prompt;
+        addItem(
+          "复制提示词",
+          noPrompt ? "这张没有同名提示词" : single ? "复制这张的提示词" : "复制提示词",
+          () => (single ? copyItemPrompt(item) : copySelectedPrompts()),
+          { iconName: "copy", disabled: single && noPrompt }
+        );
+        addItem("加入收藏夹", "把选中的图片放进收藏夹（可以顺手新建一个）", () =>
+          openFolderPicker(paths), { iconName: "star" });
+        addItem("反推", "跳到反推页：对选中的图跑 WD14 / TIPO", () =>
+          switchTab("reverse"), { iconName: "text" });
+        addItem("转换", "跳到转换压缩页：批量转格式 / 压体积 / 缩放", () =>
+          switchTab("convert"), { iconName: "convert" });
+
+        panel.append(col);
+        document.body.appendChild(panel);
+
+        // 贴在鼠标位置；贴边时往回收，别跑到窗口外
+        const pad = 8;
+        const rect = panel.getBoundingClientRect();
+        let left = evt.clientX;
+        let top = evt.clientY;
+        if (left + rect.width + pad > window.innerWidth) left = window.innerWidth - rect.width - pad;
+        if (top + rect.height + pad > window.innerHeight) top = evt.clientY - rect.height;
+        panel.style.left = `${Math.max(pad, left)}px`;
+        panel.style.top = `${Math.max(pad, top)}px`;
+
+        const onDown = (e) => {
+          if (panel.contains(e.target)) return;
+          closeCtxMenu();
+        };
+        const onKey = (e) => {
+          if (e.key === "Escape") {
+            e.stopPropagation();
+            closeCtxMenu();
+          }
+        };
+        document.addEventListener("pointerdown", onDown, true);
+        window.addEventListener("keydown", onKey, true);
+        window.addEventListener("resize", closeCtxMenu);
+        gridScroll.addEventListener("scroll", closeCtxMenu, { passive: true });
+        listBox.addEventListener("scroll", closeCtxMenu, { passive: true });
+        ctxMenuOff = () => {
+          document.removeEventListener("pointerdown", onDown, true);
+          window.removeEventListener("keydown", onKey, true);
+          window.removeEventListener("resize", closeCtxMenu);
+          gridScroll.removeEventListener("scroll", closeCtxMenu);
+          listBox.removeEventListener("scroll", closeCtxMenu);
+        };
+        ctxMenuEl = panel;
+      }
+
       function refreshViews() {
         renderGrid();
         updateTabCounts();
@@ -9491,6 +9693,12 @@ app.registerExtension({
           ensurePrompt(item).then(() => commitSelection());
         });
 
+        row.addEventListener("contextmenu", (evt) => {
+          evt.preventDefault();
+          evt.stopPropagation();
+          openImageMenu(item, evt);
+        });
+
         // 提示词按逗号切成 chips（读到了再填，读不到就留一行「没有提示词」）
         queueRowPrompt(item, (entry) => {
           if (!row.isConnected) return;
@@ -9735,17 +9943,7 @@ app.registerExtension({
         copy.addEventListener("click", async (evt) => {
           evt.stopPropagation();
           hideTip();
-          if (!item.has_prompt) {
-            setStatus("这张没有同名提示词，无法复制", { error: true });
-            return;
-          }
-          const entry = await ensurePrompt(item);
-          const text = (entry && entry.prompt) || "";
-          if (!text) {
-            setStatus("这张的提示词是空的，没有可复制的内容", { error: true });
-            return;
-          }
-          await copyText(text, "已复制这张的提示词");
+          await copyItemPrompt(item);
         });
 
         zoom.addEventListener("click", (evt) => {
@@ -9827,6 +10025,11 @@ app.registerExtension({
           });
           // 顺手把提示词读进缓存，保证写进 selection_data 的副本也是最新的
           ensurePrompt(item).then(() => commitSelection());
+        });
+        dom.addEventListener("contextmenu", (evt) => {
+          evt.preventDefault();
+          evt.stopPropagation();
+          openImageMenu(item, evt);
         });
         bindHover(dom, item);
         return dom;
@@ -10436,34 +10639,7 @@ app.registerExtension({
         paintSelection();
         setStatus("已清空选择");
       });
-      btnCopy.addEventListener("click", async () => {
-        const promptsTab = onPromptsTab();
-        const ordered = [...(promptsTab ? state.promptSel : state.selected).entries()].sort(
-          (a, b) => a[1] - b[1]
-        );
-        const lines = [];
-        for (const [path] of ordered) {
-          if (!state.promptCache.has(path)) {
-            try {
-              const data = await apiJson(
-                `/local_gallery/prompt?path=${encodeURIComponent(path)}`
-              );
-              state.promptCache.set(path, { prompt: data.prompt || "" });
-            } catch (err) {
-              state.promptCache.set(path, { prompt: "" });
-            }
-          }
-          lines.push(state.promptCache.get(path)?.prompt || "");
-        }
-        const text = lines.join("\n\n");
-        try {
-          await navigator.clipboard.writeText(text);
-          setStatus("已复制 {n} 条提示词到剪贴板", { vars: { n: lines.length } });
-        } catch (err) {
-          setStatus("剪贴板不可用，请从控制台手动复制", { error: true });
-          console.log("[LocalGallery] 复制的提示词：\n" + text);
-        }
-      });
+      btnCopy.addEventListener("click", () => copySelectedPrompts());
 
       /* ---------------- 初始化 ---------------- */
       applyCols(cols, { persist: false });
