@@ -206,6 +206,7 @@ It's the same chain as `LoadImage → WD14Tagger → TIPO → SaveText`, but wit
 - Defaults: threshold 0.35, character threshold 0.85, "underscore to space" on (`long_hair → long hair`)
 - Prefix (e.g. `@wanet`) is prepended to each line — not fed into TIPO, to keep the model input clean
 - Runs in the background; closing the panel doesn't stop it. Only one job at a time
+- Each result is one row (same row style as the Gallery **list mode**): thumbnail + file name, `resolution · size`, then the editable prompt below
 - This tab deliberately hides bulk delete, so "clear caption results" can't be mistaken for "delete images"
 
 ### Convert
@@ -221,6 +222,7 @@ Batch format conversion, size compression and resizing — **no VRAM involved**,
 | Compression | **By quality** 0–100 slider; **By size** with a target KB — binary-searches the best quality that fits |
 | Resize | None / by long edge / by percentage, plus size alignment (multiple of 2/8/16/32/64) |
 | Output | **Same folder · new file** (`a.png → a.webp`, `a.jpg → a_c.jpg`) / **Chosen folder** / **Overwrite original** |
+| Preview | Lists the images in scope (same row style as the Gallery list mode); the first 40 are shown and it refreshes when the scope changes |
 | Copy prompts | On by default — writes a matching `.txt` next to the new file |
 
 - Originals are untouched by default, so you can test on a batch first

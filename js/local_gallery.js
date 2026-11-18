@@ -2299,57 +2299,46 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   line-height: 1.9;
   font-size: 11.5px;
 }
+/* 反推行：结构直接复用图库列表模式的 .lgb-lrow（.pic / .mid / .nm / .meta），
+   这里只补「不可点」的状态和文本框 */
 .lgb-rev-item {
-  display: grid;
-  grid-template-columns: 54px 1fr;
-  gap: 8px;
-  padding: 7px;
-  border: 1px solid var(--lg-line);
-  border-radius: var(--lg-r);
-  background: var(--lg-elev);
+  align-items: flex-start;
+  cursor: default;
 }
-.lgb-rev-item.err {
+.lgb-rev-item:hover {
+  background: var(--lg-elev);
+  border-color: var(--lg-line);
+}
+.lgb-rev-item.err,
+.lgb-rev-item.err:hover {
   border-color: rgba(240, 115, 107, 0.45);
 }
-.lgb-rev-item .thumb {
-  width: 54px;
-  height: 54px;
-  border-radius: var(--lg-r-sm);
-  overflow: hidden;
-  background: var(--lg-sunken);
-}
-.lgb-rev-item .thumb img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-.lgb-rev-item .main {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
+.lgb-rev-item .mid {
   gap: 4px;
 }
-.lgb-rev-item .row1 {
-  display: flex;
+.lgb-rev-item .nm .tail {
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  min-width: 0;
-}
-.lgb-rev-item .nm {
-  min-width: 0;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: var(--lg-text);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.lgb-rev-item .meta {
+  margin-left: auto;
+  padding-left: 8px;
   flex: 0 0 auto;
-  color: var(--lg-text-3);
-  font-size: 10.5px;
-  font-variant-numeric: tabular-nums;
+}
+/* 预览行（转换页）：跟列表模式一样，但不可点 */
+.lgb-prow {
+  cursor: default;
+}
+.lgb-prow:hover {
+  background: var(--lg-elev);
+  border-color: var(--lg-line);
+}
+.lgb-conv-preview {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.lgb-conv-preview .lgb-prow {
+  padding: 5px 7px;
 }
 .lgb-rev-item textarea {
   width: 100%;
@@ -3361,6 +3350,10 @@ const I18N_EN = {
   "已选中：只输出提示词，不输出图片": "Selected: outputs the prompt only, no image",
   "已清空提示词的选择": "Prompt selection cleared",
   "共 {n} 张": "{n} images",
+  "预览": "Preview",
+  "范围里还没有图片": "No images in this scope",
+  "共 {n} 张，只列前 {m} 张；转换时按范围全部处理":
+    "{n} images — showing the first {m}; conversion still covers the whole scope",
   "已读到 {n} 张图，悬停看提示词": "{n} images loaded, hover to preview prompts",
   "已读到 {n} 张图": "{n} images loaded",
   "{n} 个提示词匹配不到图片": "{n} prompt files have no matching image",
@@ -6626,6 +6619,45 @@ app.registerExtension({
         return String(path || "").split(/[\\/]/).pop() || String(path || "");
       }
 
+      /* 文件名拆成 stem + 扩展名，列表行 / 预览行共用 */
+      function pathParts(path) {
+        const name = shortName(path);
+        const dot = name.lastIndexOf(".");
+        if (dot > 0) return { stem: name.slice(0, dot), ext: `.${name.slice(dot + 1)}` };
+        return { stem: name, ext: "" };
+      }
+
+      function stateItem(path) {
+        return state.items.find((it) => it.path === path) || null;
+      }
+
+      /* 「1000×1456 · 2.2MB」，拿不到扫描信息就返回空串 */
+      function pathMetaText(path) {
+        const it = stateItem(path);
+        if (!it) return "";
+        const bits = [];
+        if (it.width && it.height) bits.push(`${it.width}×${it.height}`);
+        if (it.size) bits.push(fmtSize(it.size));
+        return bits.join(" · ");
+      }
+
+      /* 列表模式那一行的缩略图块（52×68，cover 铺满） */
+      function mkPic(path, size = 128) {
+        const pic = el("div", "pic");
+        const img = document.createElement("img");
+        img.loading = "lazy";
+        img.decoding = "async";
+        img.alt = "";
+        img.draggable = false;
+        img.src = buildUrl("/local_gallery/thumb", { path, size });
+        img.addEventListener("error", () => {
+          img.style.visibility = "hidden";
+          pic.classList.add("broken");
+        });
+        pic.append(img);
+        return pic;
+      }
+
       /* ---------------- Ctrl+Z 撤销删除 ----------------
          删除都是「移到回收站」，所以撤销 = 按 batch + id 把文件移回去。
          每次删除成功压一条，最多记 20 次；Ctrl+Z 从最近一次往回撤。 */
@@ -7472,29 +7504,34 @@ app.registerExtension({
 
         /* -------- 结果列表 -------- */
         function makeRow(rec) {
-          const row = el("div", "lgb-rev-item");
+          // 结构跟图库「列表模式」那一行一致：左边 52×68 缩略图，中间文件名/尺寸/内容
+          const row = el("div", "lgb-lrow lgb-rev-item");
           row.dataset.path = rec.path;
-          const thumbWrap = el("div", "thumb");
-          const img = document.createElement("img");
-          img.loading = "lazy";
-          img.alt = "";
-          img.src = buildUrl("/local_gallery/thumb", { path: rec.path, size: 128 });
-          thumbWrap.append(img);
 
-          const main = el("div", "main");
-          const top = el("div", "row1");
-          top.append(el("span", "nm", rec.name || shortName(rec.path)));
+          const parts = pathParts(rec.path);
+          const mid = el("div", "mid");
+          const nm = el("div", "nm");
+          // 图库列表是「名字 + 扩展名」两段，这里也拆开，别把 .png 写两遍
+          nm.append(el("span", "t", parts.stem), el("span", "ext", parts.ext));
+
           const flags = el("div", "flags");
           if (rec.has_prompt) {
             const flag = el("span", "flag", "已有 txt");
             setTitle(flag, "这张图已经有同名提示词文件，写入方式选「跳过」就不会动它");
             flags.append(flag);
           }
-          top.append(
-            el("div", "lgb-head-spacer"),
-            flags,
-            el("span", "meta", rec.tag_count ? `${rec.tag_count} 个标签` : "")
-          );
+
+          const copyBtn = el("button", "lgb-link", "复制");
+          setTitle(copyBtn, "复制这一条");
+
+          const tagCount = el("span", "lgb-count tagcount", "");
+          if (rec.tag_count) setTpl(tagCount, "{n} 个标签", { n: rec.tag_count });
+
+          const tail = el("div", "tail");
+          tail.append(tagCount, flags, copyBtn);
+          nm.append(tail);
+
+          const meta = el("div", "meta", pathMetaText(rec.path));
 
           const area = document.createElement("textarea");
           area.spellcheck = false;
@@ -7514,17 +7551,14 @@ app.registerExtension({
           });
           row.__autoGrow = autoGrow;
 
-          const copyBtn = el("button", "lgb-link", "复制");
-          setTitle(copyBtn, "复制这一条");
           copyBtn.addEventListener("click", () => {
             const text = area.value.trim();
             if (text) copyText(text, "已复制 {name}", { name: rec.name || shortName(rec.path) });
           });
-          top.insertBefore(copyBtn, flags);
 
-          main.append(top, area);
-          if (rec.error) main.append(el("div", "warn", rec.error));
-          row.append(thumbWrap, main);
+          mid.append(nm, meta, area);
+          if (rec.error) mid.append(el("div", "warn", rec.error));
+          row.append(mkPic(rec.path), mid);
           if (rec.error) row.classList.add("err");
           return row;
         }
@@ -7544,8 +7578,8 @@ app.registerExtension({
                 area.value = rec.text || "";
                 existing.__autoGrow?.();
               }
-              const meta = existing.querySelector(".meta");
-              if (meta && rec.tag_count) setTpl(meta, "{n} 个标签", { n: rec.tag_count });
+              const tc = existing.querySelector(".tagcount");
+              if (tc && rec.tag_count) setTpl(tc, "{n} 个标签", { n: rec.tag_count });
               existing.classList.toggle("err", !!rec.error);
               return;
             }
@@ -8615,6 +8649,8 @@ app.registerExtension({
       function ensureConvertPage() {
         if (!conv.built) mountConvertPage();
         syncConvertPage();
+        // 选中/列表可能变了，进页面时对一遍预览
+        conv.ui?.renderPreview();
       }
 
       function mountConvertPage() {
@@ -8665,6 +8701,7 @@ app.registerExtension({
           (key) => {
             conv.scope = key;
             syncConvertPage();
+            renderPreview();
           }
         );
         const secScope = el("section", "lgb-set-sec");
@@ -8865,7 +8902,47 @@ app.registerExtension({
         }
         fmtSel.addEventListener("change", applyOutput);
 
-        body.append(secScope, secFormat, secComp, secScale, secOut);
+        /* —— 预览：这次会处理哪些图（行样式跟图库列表模式一致） —— */
+        const PREVIEW_MAX = 40;
+        const secPreview = el("section", "lgb-set-sec");
+        const previewList = el("div", "lgb-conv-preview");
+        const previewHint = el("p", "desc", "");
+        secPreview.append(el("div", "ttl", "预览"), previewList, previewHint);
+
+        let previewSig = "";
+        function convTargets() {
+          return conv.scope === "selected"
+            ? [...state.selected.keys()]
+            : visibleItems().map((it) => it.path);
+        }
+        function renderPreview(force = false) {
+          const paths = convTargets();
+          const sig = `${conv.scope}|${paths.length}|${paths.slice(0, PREVIEW_MAX).join("\n")}`;
+          if (!force && sig === previewSig) return;
+          previewSig = sig;
+          previewList.replaceChildren();
+          paths.slice(0, PREVIEW_MAX).forEach((path) => {
+            const parts = pathParts(path);
+            const row = el("div", "lgb-lrow lgb-prow");
+            const mid = el("div", "mid");
+            const nm = el("div", "nm");
+            nm.append(el("span", "t", parts.stem), el("span", "ext", parts.ext));
+            mid.append(nm, el("div", "meta", pathMetaText(path)));
+            row.append(mkPic(path), mid);
+            previewList.append(row);
+          });
+          if (!paths.length) previewList.append(el("div", "lgb-rev-empty", "范围里还没有图片"));
+          setTpl(
+            previewHint,
+            paths.length > PREVIEW_MAX
+              ? "共 {n} 张，只列前 {m} 张；转换时按范围全部处理"
+              : "共 {n} 张",
+            { n: paths.length, m: PREVIEW_MAX }
+          );
+          previewHint.style.display = paths.length ? "" : "none";
+        }
+
+        body.append(secScope, secFormat, secComp, secScale, secOut, secPreview);
 
         /* 参数区滚轮：有溢出就自己滚，并且别让事件继续冒泡到画布
            （否则滚轮滚到面板上会把 ComfyUI 画布放大缩小）。 */
@@ -8918,6 +8995,7 @@ app.registerExtension({
         pageConvert.append(box);
 
         conv.ui = {
+          renderPreview,
           hint: hintEl,
           start: startBtn,
           scopeSeg,
@@ -8933,6 +9011,7 @@ app.registerExtension({
 
         applyScale();
         applyOutput();
+        renderPreview(true);
         applyMode();
 
         /* —— 任务 —— */
