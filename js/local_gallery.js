@@ -1054,6 +1054,8 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   gap: 8px;
   flex: 0 0 auto;
   min-width: 0;
+  /* 跟下面的文件夹行 / 网格左右对齐（以前在 .lgb-page 里靠它的 padding） */
+  padding: 0 8px;
 }
 .lgb-chk {
   display: flex;
@@ -4903,7 +4905,7 @@ app.registerExtension({
       /* 图像对比页：两张图叠/并排，滑块擦除、同步缩放平移（内容在 mountComparePage 里建） */
       const pageCompare = el("div", "lgb-page off");
 
-      pageGallery.append(filters, gridScroll);
+      pageGallery.append(gridScroll);
 
       /* 底栏：选择信息 + 批量操作（批量删除已挪到路径栏、回收站左边） */
       const rowFoot = el("div", "lgb-row lgb-foot");
@@ -4962,6 +4964,7 @@ app.registerExtension({
       wrap.append(
         head,
         rowAdd,
+        filters,
         srcBar,
         chips,
         pageGallery,
@@ -6258,6 +6261,7 @@ app.registerExtension({
         // 路径栏（浏览 / 设置 / 刷新 / 回收站）只在能看图的两个页签出现；
         // 提示词页把整块批量删除挪进提示词栏，那里也有一颗「删除选中」
         rowAdd.style.display = isGridView ? "" : "none";
+        filters.style.display = isGridView ? "" : "none";
         // 收藏夹栏 / 文件夹筛选行跟着页签走
         renderSourceBar();
         renderChips();

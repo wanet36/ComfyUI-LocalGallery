@@ -57,10 +57,9 @@ Five bands, top to bottom:
 | Area | What's there |
 |---|---|
 | **Tab bar** | Six tabs: `Gallery / Favorites / Prompts / Caption / Convert / Compare` (counts live in the tooltip, not on the buttons) |
-| **Path bar** (Gallery / Favorites) | Settings (holds the whole *Browse local paths* block: Choose folder / in-panel browser), ⟳ rescan, the batch group (`Select all` / `Clear selection`; Favorites adds `Unfavorite (N)`), Trash |
-| **Folder row** | One row of chips under the path bar: `All` plus every added folder (with counts) — click one to show only that folder; remembered locally |
-| **Path bar** | `Settings` / `Rescan` / **Grid · List slider** (right after Rescan) / Trash, with batch actions on the right |
-| **Filter row** | **Group by day**, sort button, search-scope button, search box, `hits / total` (Include subfolders / Only with prompt live in Settings) |
+| **Path bar** (Gallery / Favorites) | `Settings` (holds the whole *Browse local paths* block), `Rescan`, the **Grid · List slider** (right after Rescan), the batch group (`Select all` / `Clear selection`; Favorites adds `Unfavorite (N)`), Trash |
+| **Filter row** (Gallery / Favorites) | **Group by day**, sort button, search-scope button, search box, `hits / total` (Include subfolders / Only with prompt live in Settings) |
+| **Folder row** (Gallery only) | One row of chips under the filter row: `All` plus every added folder (with counts) — click one to show only that folder; remembered locally |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page). A **list mode** is one click away: one image per row with thumbnail, name, resolution/size and prompt tags |
 | **Footer** | **Single / multi-select slider** (click either side and the knob slides over), selection count, status text |
 
