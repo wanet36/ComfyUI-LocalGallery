@@ -51,6 +51,7 @@ from .favorites import (
 )
 from .prompt_reader import (
     TEXT_SIDECAR_EXTENSIONS,
+    build_cross_index,
     find_sidecar_prompt,
     has_prompt_file,
     read_prompt_file,
@@ -81,6 +82,34 @@ _PLACEHOLDER_PNG = (
 
 def _deny(message: str, status: int = 400):
     return web.json_response({"ok": False, "error": message}, status=status)
+
+
+def _cross_index_for(raw_roots: str) -> dict[str, str]:
+    """给「跨文件夹同名提示词」用的索引：优先用请求带来的路径列表，
+    没带就退回服务端记住的上次路径。"""
+    roots: list[str] = []
+    text = (raw_roots or "").strip()
+    if text:
+        for part in re.split(r"[\r\n;|]+", text):
+            part = part.strip().strip('"')
+            if part:
+                roots.append(part)
+    if not roots:
+        try:
+            roots = load_last_paths()
+        except Exception:  # noqa: BLE001
+            roots = []
+    dirs: list[str] = []
+    for item in roots:
+        try:
+            path = Path(os.path.expandvars(os.path.expanduser(item)))
+        except (TypeError, ValueError):
+            continue
+        folder = path if path.is_dir() else path.parent
+        text_dir = str(folder)
+        if text_dir not in dirs:
+            dirs.append(text_dir)
+    return build_cross_index(dirs) if dirs else {}
 
 
 def _check_path(raw: str) -> tuple[Path | None, web.Response | None]:
@@ -330,8 +359,10 @@ def register_routes() -> bool:
                 }
             )
 
+        cross = _cross_index_for(request.query.get("roots", ""))
+
         def work():
-            return find_sidecar_prompt(path) or ""
+            return find_sidecar_prompt(path, cross) or ""
 
         try:
             prompt = await loop.run_in_executor(None, work)
@@ -344,7 +375,7 @@ def register_routes() -> bool:
                 "path": str(path),
                 "name": path.name,
                 "prompt": prompt or "",
-                "has_prompt": bool(prompt) or has_prompt_file(path),
+                "has_prompt": bool(prompt) or has_prompt_file(path, cross),
                 "width": width,
                 "height": height,
             }

@@ -5573,6 +5573,13 @@ app.registerExtension({
       }
 
       /* ---------------- 提示词缓存 ---------------- */
+      // 带上当前路径列表：后端据此在别的文件夹里找同名提示词（图片在 A、txt 在 B 也能配上）
+      function promptUrl(path) {
+        const roots = getPaths().join("\n");
+        const base = `/local_gallery/prompt?path=${encodeURIComponent(path)}`;
+        return roots ? `${base}&roots=${encodeURIComponent(roots)}` : base;
+      }
+
       async function ensurePrompt(item, { retry = 1 } = {}) {
         if (!item) return null;
         const cached = state.promptCache.get(item.path);
@@ -5581,9 +5588,7 @@ app.registerExtension({
         let lastError = null;
         for (let attempt = 0; attempt <= retry; attempt += 1) {
           try {
-            const data = await apiJson(
-              `/local_gallery/prompt?path=${encodeURIComponent(item.path)}`
-            );
+            const data = await apiJson(promptUrl(item.path));
             const entry = {
               prompt: data.prompt || "",
               width: data.width || 0,
@@ -6394,9 +6399,7 @@ app.registerExtension({
         for (const [path] of ordered) {
           if (!state.promptCache.has(path)) {
             try {
-              const data = await apiJson(
-                `/local_gallery/prompt?path=${encodeURIComponent(path)}`
-              );
+              const data = await apiJson(promptUrl(path));
               state.promptCache.set(path, { prompt: data.prompt || "" });
             } catch (err) {
               state.promptCache.set(path, { prompt: "" });

@@ -20,6 +20,7 @@ from pathlib import Path
 from .prompt_reader import (
     IMAGE_EXTENSIONS,
     TEXT_SIDECAR_EXTENSIONS,
+    build_cross_index,
     find_sidecar_prompt,
     has_prompt_file,
     is_image_file,
@@ -452,7 +453,10 @@ def list_orphan_prompts(
     max_files: int = 20000,
     limit: int | None = None,
 ) -> dict:
-    """找出「有提示词文件、但同目录没有同名图片」的孤儿提示词。
+    """找出「有提示词文件、但没有任何同名图片」的孤儿提示词。
+
+    注意是「整批扫描范围里都没有同名图片」，不是只看同目录 ——
+    图片在 A 目录、txt 在 B 目录时会按跨文件夹同名配对，那些 txt 不算孤儿。
 
     返回 count（总数）/ samples（前 8 个文件名，给状态栏提示用）/ items（明细，
     每项可带 path/name/dir/size/mtime）。只做 os.scandir，不读文件内容。
@@ -467,15 +471,17 @@ def list_orphan_prompts(
     cap = budget if limit is None else max(0, int(limit))
     truncated = False
 
-    def handle_dir(directory: Path) -> None:
-        nonlocal count, budget, truncated
+    # 第一遍：先把所有目录读进来（同目录图片 + 文本一起收），
+    # 这样才能判断「别处是否有同名图片」
+    dir_entries: list[tuple[Path, list[tuple[Path, os.stat_result | None]]]] = []
+    all_images: set[str] = set()
+
+    def scan_dir(directory: Path) -> None:
         try:
             with os.scandir(directory) as it:
                 entries = list(it)
         except OSError:
             return
-
-        images: set[str] = set()
         texts: list[tuple[Path, os.stat_result | None]] = []
         for entry in entries:
             try:
@@ -486,24 +492,40 @@ def list_orphan_prompts(
             stem, suffix = os.path.splitext(entry.name)
             suffix = suffix.lower()
             if suffix in IMAGE_EXTENSIONS:
-                images.add(stem.lower())
+                all_images.add(stem.lower())
             elif suffix in TEXT_SIDECAR_EXTENSIONS:
                 try:
                     texts.append((Path(entry.path), entry.stat()))
                 except OSError:
                     texts.append((Path(entry.path), None))
+        if texts:
+            dir_entries.append((directory, texts))
 
+    for root in roots:
+        try:
+            if not root.is_dir():
+                continue
+        except OSError:
+            continue
+        if recursive:
+            for dirpath, dirnames, _ in os.walk(root):
+                dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+                scan_dir(Path(dirpath))
+        else:
+            scan_dir(root)
+
+    # 第二遍：把整批范围里都配不上图片的算孤儿
+    for directory, texts in dir_entries:
         # kohya 风格的目录级提示词（`1_girl smile.txt` / `目录名.txt`）不算孤儿
         folder_name = directory.name.lower()
         folder_caption = re.sub(r"^\d+_", "", folder_name).replace("_", " ")
-
         for path, stat in texts:
             if budget <= 0:
                 truncated = True
-                return
+                break
             budget -= 1
             stem = path.stem.lower()
-            if stem in images or stem in (folder_name, folder_caption):
+            if stem in all_images or stem in (folder_name, folder_caption):
                 continue
             count += 1
             if len(samples) < 8:
@@ -518,19 +540,8 @@ def list_orphan_prompts(
                         "mtime": float(stat.st_mtime) if stat else 0.0,
                     }
                 )
-
-    for root in roots:
-        try:
-            if not root.is_dir():
-                continue
-        except OSError:
-            continue
-        if recursive:
-            for dirpath, dirnames, _ in os.walk(root):
-                dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
-                handle_dir(Path(dirpath))
-        else:
-            handle_dir(root)
+        if truncated:
+            break
 
     return {"count": count, "samples": samples, "items": items, "truncated": truncated}
 
@@ -603,6 +614,31 @@ def scan_folder(
     seen: set[str] = set()
     truncated = False
 
+    # 跨文件夹同名提示词：图片在一个目录、txt 在另一个已加入目录时也要配上
+    cross_dirs: list[str] = []
+    for target in targets:
+        try:
+            folder = target if target.is_dir() else target.parent
+        except OSError:
+            continue
+        text = str(folder)
+        if text not in cross_dirs:
+            cross_dirs.append(text)
+    if recursive:
+        # 递归扫描时子目录里的 txt 也算，先把子目录列进索引
+        for target in list(targets):
+            try:
+                if not target.is_dir():
+                    continue
+            except OSError:
+                continue
+            for dirpath, dirnames, _ in os.walk(target):
+                dirnames[:] = sorted(d for d in dirnames if not d.startswith("."))
+                text = str(dirpath)
+                if text not in cross_dirs:
+                    cross_dirs.append(text)
+    cross = build_cross_index(cross_dirs)
+
     for target in targets:
         raw_target = str(target)
         if not raw_target:
@@ -624,6 +660,8 @@ def scan_folder(
             roots.append(str(target.parent))
             mtime = _stat_mtime(target)
             flag, width, height = _probe(target, mtime)
+            if not flag and cross:
+                flag = bool(cross.get(target.stem.lower()))
             if only_with_prompt and not flag:
                 continue
             key = raw_target.lower()
@@ -664,12 +702,39 @@ def scan_folder(
             key = str(path).lower()
             if key in seen:
                 continue
+            if not flag and cross:
+                flag = bool(cross.get(path.stem.lower()))
             if only_with_prompt and not flag:
                 continue
             seen.add(key)
             item = _make_item(path, target, has_prompt=flag, width=width, height=height)
             item["mtime"] = mtime
             items.append(item)
+
+    # 递归扫到的子目录也纳入索引（同目录 txt 已经由 _probe 处理过，这里补跨目录的）
+    extra_dirs: list[str] = []
+    for item in items:
+        parent = str(Path(item["path"]).parent)
+        if parent not in cross_dirs:
+            extra_dirs.append(parent)
+    if extra_dirs:
+        cross_dirs.extend(extra_dirs)
+        cross = build_cross_index(cross_dirs)
+
+    if cross:
+        for item in items:
+            stem = str(item.get("stem") or "").lower()
+            hit = cross.get(stem)
+            if not hit:
+                continue
+            try:
+                if Path(hit).parent == Path(item["path"]).parent:
+                    continue  # 同目录的算过一遍了，别重复标记
+            except OSError:
+                pass
+            item["has_prompt"] = True
+            item["has_prompt_file"] = True
+            item["prompt_path"] = hit
 
     error = ""
     if invalid:

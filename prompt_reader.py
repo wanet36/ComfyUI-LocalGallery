@@ -7,6 +7,7 @@
 1. 同名文本侧车：`a.png` -> `a.txt` / `a.caption` / `a.prompt` / `a.tags`（大小写不敏感）
 2. 同名 JSON 侧车：`a.json`（支持 kohya `captions` 列表、`prompt`/`caption`/`text` 字段）
 3. 目录级提示词：kohya 风格 `1_girl smile/` 目录里的 `1_girl smile.txt`（自动去掉 `数字_` 前缀）
+4. 跨文件夹同名：另一条已加入的路径里有同名 .txt（比如图片在 `output/`、提示词在 `output/提示词/`）
 
 不读图片内嵌的任何元数据（工作流参数一律忽略）。
 全部失败时返回空字符串，绝不抛异常给上层。
@@ -32,6 +33,11 @@ TEXT_SIDECAR_EXTENSIONS = (".txt", ".caption", ".prompt", ".tags", ".md")
 _DIR_CACHE: dict[str, tuple[float, dict[str, str]]] = {}
 _DIR_CACHE_LOCK = threading.Lock()
 _DIR_CACHE_TTL = 5.0
+
+# 跨文件夹索引缓存：key = 排序后的目录元组
+_CROSS_CACHE: dict[tuple[str, ...], tuple[float, dict[str, str]]] = {}
+_CROSS_CACHE_LOCK = threading.Lock()
+_CROSS_CACHE_TTL = 5.0
 
 
 # --------------------------------------------------------------------------- #
@@ -155,8 +161,73 @@ def _clean_folder_caption(name: str) -> str:
     return re.sub(r"^\d+_", "", name).replace("_", " ").strip()
 
 
-def find_sidecar_prompt(image_path: str | os.PathLike) -> str:
-    """只在「同名/同目录的提示词文件」里找，完全不看图片内嵌元数据。"""
+def build_cross_index(dirs) -> dict[str, str]:
+    """把一批目录里的侧车文件按 stem 建索引，供「跨文件夹同名匹配」用。
+
+    - key 是小写文件名（不含扩展名），value 是提示词文件的绝对路径
+    - 文本侧车优先于 .json；同名多处时取路径排序后的第一个（结果稳定）
+    - 结果缓存 5 秒，扫描 / 悬停预览不会反复 scandir
+    """
+    keys: list[str] = []
+    for item in dirs or ():
+        text = str(item or "").strip()
+        if not text:
+            continue
+        try:
+            key = str(Path(text))
+        except (TypeError, ValueError):
+            continue
+        if key not in keys:
+            keys.append(key)
+    if not keys:
+        return {}
+    cache_key = tuple(sorted(keys))
+    now = time.time()
+    with _CROSS_CACHE_LOCK:
+        hit = _CROSS_CACHE.get(cache_key)
+        if hit and now - hit[0] < _CROSS_CACHE_TTL:
+            return hit[1]
+
+    found: dict[str, str] = {}
+    json_found: dict[str, str] = {}
+    for directory_text in cache_key:
+        try:
+            with os.scandir(Path(directory_text)) as it:
+                entries = sorted(it, key=lambda e: e.name.lower())
+        except OSError:
+            continue
+        for entry in entries:
+            try:
+                if not entry.is_file() or entry.name.startswith("."):
+                    continue
+            except OSError:
+                continue
+            stem, suffix = os.path.splitext(entry.name)
+            suffix = suffix.lower()
+            key = stem.lower()
+            if suffix in TEXT_SIDECAR_EXTENSIONS:
+                found.setdefault(key, entry.path)
+            elif suffix == ".json":
+                json_found.setdefault(key, entry.path)
+    for key, path in json_found.items():
+        found.setdefault(key, path)
+
+    with _CROSS_CACHE_LOCK:
+        _CROSS_CACHE[cache_key] = (now, found)
+        if len(_CROSS_CACHE) > 64:
+            _CROSS_CACHE.clear()
+            _CROSS_CACHE[cache_key] = (now, found)
+    return found
+
+
+def find_sidecar_prompt(
+    image_path: str | os.PathLike, cross: dict[str, str] | None = None
+) -> str:
+    """只在「同名/同目录的提示词文件」里找，完全不看图片内嵌元数据。
+
+    cross：`build_cross_index()` 建出来的跨文件夹索引；同目录找不到时，
+    会去别的已加入目录里找同名提示词（图片在 A 文件夹、txt 在 B 文件夹也能配上）。
+    """
     try:
         path = Path(image_path)
     except (TypeError, ValueError):
@@ -181,6 +252,14 @@ def find_sidecar_prompt(image_path: str | os.PathLike) -> str:
         text = _prompt_from_json_file(candidate)
         if text:
             return text
+
+    # 2.5) 跨文件夹同名：图片在 A 目录、提示词在 B 目录
+    if cross:
+        hit = cross.get(stem.lower())
+        if hit:
+            text = read_prompt_file(hit)
+            if text:
+                return text
 
     # 3) 目录级提示词（kohya 风格）
     folder_caption = _clean_folder_caption(directory.name)
@@ -214,8 +293,11 @@ def read_prompt_file(path: str | os.PathLike) -> str:
     return ""
 
 
-def has_prompt_file(image_path: str | os.PathLike) -> bool:
+def has_prompt_file(
+    image_path: str | os.PathLike, cross: dict[str, str] | None = None
+) -> bool:
     """廉价判断：只检查侧车文件是否存在（不解码图片）。"""
+
     try:
         path = Path(image_path)
     except (TypeError, ValueError):
@@ -225,6 +307,10 @@ def has_prompt_file(image_path: str | os.PathLike) -> bool:
     for ext in TEXT_SIDECAR_EXTENSIONS + (".json",):
         if _find_case_insensitive(directory, stem + ext):
             return True
+    # 跨文件夹同名（图片在一个目录、txt 在另一个已加入目录）
+    if cross and cross.get(stem.lower()):
+        return True
+
     folder_caption = _clean_folder_caption(directory.name)
     if folder_caption:
         for name in (directory.name + ".txt", folder_caption + ".txt"):

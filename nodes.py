@@ -14,20 +14,53 @@ import numpy as np
 import torch
 from PIL import Image, ImageOps
 
-from .gallery import describe_paths, is_path_allowed, load_config, scan_folder
-from .prompt_reader import find_sidecar_prompt, is_image_file, read_prompt_file
+from .gallery import (
+    describe_paths,
+    is_path_allowed,
+    load_config,
+    resolve_input_paths,
+    scan_folder,
+)
+from .prompt_reader import build_cross_index, find_sidecar_prompt, is_image_file, read_prompt_file
 
 logger = logging.getLogger(__name__)
 
 PLACEHOLDER = torch.zeros((1, 64, 64, 3), dtype=torch.float32)
 
 
-def read_prompt(path: str) -> str:
-    """读取同名提示词文件（.txt/.caption/.prompt/.tags/.md/.json），不碰图片元数据。"""
+def read_prompt(path: str, cross: dict[str, str] | None = None) -> str:
+    """读取同名提示词文件（.txt/.caption/.prompt/.tags/.md/.json），不碰图片元数据。
+
+    cross：跨文件夹索引（图片在 A 目录、txt 在 B 目录时也能配上）。
+    """
     try:
-        return find_sidecar_prompt(path) or ""
+        return find_sidecar_prompt(path, cross) or ""
     except Exception:
         return ""
+
+
+def build_cross_from_widgets(folder_path: str, extra_paths) -> dict[str, str]:
+    """按节点上的路径（folder_path 多行 + extra_paths）建跨文件夹提示词索引。"""
+    dirs: list[str] = []
+    raws = [str(folder_path or "")]
+    for item in _parse_json(extra_paths, []):
+        if isinstance(item, str) and item.strip():
+            raws.append(item)
+        elif isinstance(item, dict) and item.get("path"):
+            raws.append(str(item["path"]))
+    for raw in raws:
+        for path in resolve_input_paths(raw):
+            try:
+                folder = path if path.is_dir() else path.parent
+            except OSError:
+                continue
+            text = str(folder)
+            if text not in dirs:
+                dirs.append(text)
+    try:
+        return build_cross_index(dirs) if dirs else {}
+    except Exception:
+        return {}
 
 
 def _parse_json(raw, fallback):
@@ -177,6 +210,8 @@ class LocalGalleryBrowser:
         return "|".join(signature)
 
     def run(self, folder_path="", selection_data="{}", extra_paths="[]", **kwargs):
+        # 跨文件夹同名提示词：图片和 txt 不在同一个目录也能配上
+        cross = build_cross_from_widgets(folder_path, extra_paths)
         items = parse_selection(selection_data)
         prompt_items = parse_prompt_selection(selection_data)
         filename_from = parse_filename_source(selection_data)
@@ -199,7 +234,7 @@ class LocalGalleryBrowser:
 
             prompt = ""
             try:
-                prompt = read_prompt(path)
+                prompt = read_prompt(path, cross)
             except Exception as exc:
                 logger.warning(f"[LocalGallery] 提示词读取失败 {path}: {exc}")
             if not prompt:
@@ -233,7 +268,7 @@ class LocalGalleryBrowser:
                         # 无匹配提示词：给的就是 .txt 本身，直接读文件
                         text = read_prompt_file(p)
                     else:
-                        text = read_prompt(path)
+                        text = read_prompt(path, cross)
                 except Exception as exc:
                     logger.warning(f"[LocalGallery] 提示词读取失败 {path}: {exc}")
                 if not text:
