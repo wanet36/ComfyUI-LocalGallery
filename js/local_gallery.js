@@ -1180,8 +1180,8 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   font-size: 11px;
 }
 .lgb-srcbar {
-  padding: 0 8px 2px;
-  min-height: 26px;
+  padding: 7px 8px 3px;
+  min-height: 30px;
 }
 .lgb-srcchip .lbl {
   max-width: 190px;
@@ -4835,8 +4835,8 @@ app.registerExtension({
       rowAdd.append(
         viewSwitch,
         btnGroup,
-        el("div", "lgb-head-spacer"),
         sortModeBtn,
+        el("div", "lgb-head-spacer"),
         bulk,
         btnTrash,
         searchBox
