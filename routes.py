@@ -351,6 +351,75 @@ def register_routes() -> bool:
         return web.json_response({"ok": True, "items": items})
 
     # ---------------------------------------------------------------- delete
+    # --------------------------------------------------------------- reveal
+    @routes.post(f"{NODE_API_PREFIX}/reveal")
+    async def local_gallery_reveal(request: web.Request):
+        """在系统文件管理器里定位这些文件（Windows 用 explorer /select）。"""
+        try:
+            payload = await request.json()
+        except Exception:
+            return _deny("请求体不是合法 JSON")
+        raw = payload.get("paths") if isinstance(payload, dict) else payload
+        if isinstance(raw, str):
+            raw = [raw]
+        if not isinstance(raw, list) or not raw:
+            return _deny("paths 必须是非空数组")
+        if len(raw) > 50:
+            return _deny("一次最多定位 50 个文件")
+
+        targets: list[Path] = []
+        for item in raw:
+            path, error = _check_path(str(item or ""))
+            if error is not None:
+                continue
+            targets.append(path)  # type: ignore[arg-type]
+        if not targets:
+            return _deny("没有可定位的文件（路径不存在或不在允许范围内）", 404)
+
+        folders: list[Path] = []
+        for path in targets:
+            folder = path if path.is_dir() else path.parent
+            if folder not in folders:
+                folders.append(folder)
+
+        single = len(targets) == 1 and targets[0].is_file()
+
+        def open_in_file_manager() -> list[str]:
+            opened: list[str] = []
+            # 多选跨目录时最多开 3 个窗口，免得一次弹一屏
+            for folder in folders[:3]:
+                try:
+                    if sys.platform.startswith("win"):
+                        if single:
+                            subprocess.Popen(["explorer", f"/select,{targets[0]}"])
+                        else:
+                            subprocess.Popen(["explorer", str(folder)])
+                    elif sys.platform == "darwin":
+                        if single:
+                            subprocess.Popen(["open", "-R", str(targets[0])])
+                        else:
+                            subprocess.Popen(["open", str(folder)])
+                    else:
+                        subprocess.Popen(["xdg-open", str(folder)])
+                    opened.append(str(folder))
+                except Exception as exc:  # 打不开就算了，别把请求搞挂
+                    logger.warning("[LocalGallery] 打开文件管理器失败 %s：%s", folder, exc)
+            return opened
+
+        loop = asyncio.get_running_loop()
+        opened = await loop.run_in_executor(None, open_in_file_manager)
+        if not opened:
+            return _deny("打不开文件管理器（系统不允许或命令不可用）", 500)
+        return web.json_response(
+            {
+                "ok": True,
+                "opened": opened,
+                "count": len(targets),
+                "single": single,
+                "more": max(0, len(folders) - 3),
+            }
+        )
+
     @routes.post(f"{NODE_API_PREFIX}/delete")
     async def local_gallery_delete(request: web.Request):
         """「删除」= 移到回收站，可手动恢复。只接受图片文件。"""

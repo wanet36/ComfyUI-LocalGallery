@@ -82,6 +82,7 @@ Right-click a thumbnail (or a list row): `Copy prompts` / `Add to folder` / `Cap
 - Right-clicking an unselected image selects just it first; if it's already inside the selection, the action applies to the whole selection
 - `Delete…` is a second-level menu that opens beside the first one (also on click) and offers the same three options as before: both / prompt only / image only
 - With exactly **two** images selected, an extra `Compare` item appears and jumps straight to the compare page
+- `Show in folder` calls `explorer /select` to highlight the file in Explorer (for a multi-selection it opens the parent folders, at most 3 windows)
 - These five actions used to sit in the footer and the path bar; the panel is now cleaner. The Prompts tab keeps its own **Delete selected (N)** button
 
 ### Adding paths
@@ -386,6 +387,7 @@ Every field is also editable from the Settings panel; editing the JSON by hand w
 | POST | `/local_gallery/pick_folder` | Native Windows folder picker on the ComfyUI machine (returns `paths`, or `canceled`) |
 | POST | `/local_gallery/describe` `{"paths":[...]}` | Describe a batch of paths |
 | POST | `/local_gallery/delete` `{"paths":[...]}` | Move to trash (image + prompt) |
+| POST | `/local_gallery/reveal` `{"paths":[...]}` | Reveal in the system file manager (`explorer /select` on Windows; at most 3 windows for a multi-selection) |
 | POST | `/local_gallery/delete_prompts` `{"paths":[...]}` | Move only prompt files, keep images |
 | POST | `/local_gallery/search` `{"files":[...],"q":"a b"}` | Search prompts in the current list |
 | GET | `/local_gallery/favorites` | Favorites, newest first |

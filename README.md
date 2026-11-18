@@ -83,6 +83,7 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 - 右键没选中的图会先只选它；右键已在选择里的图，动作对整个选择生效
 - `删除…` 是二级菜单，悬停或点击在右侧展开，三个口径和图库页一致（全部 / 只提示词 / 只图片）
 - 正好选中 **两张** 时会多一项 `图像对比`，点了直接跳到对比页比这两张
+- `在文件夹中显示`：调 `explorer /select` 直接在资源管理器里选中这张图（多选时打开所在文件夹，最多 3 个窗口）
 - 这五项原来在底栏和路径栏上，现在都收进右键菜单，面板更干净；提示词页的批量删除按钮照旧保留
 
 ### 加路径
@@ -387,6 +388,7 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 | POST | `/local_gallery/pick_folder` | 在跑 ComfyUI 的机器上弹 Windows 文件夹选择框（成功返回 `paths`，取消返回 `canceled`） |
 | POST | `/local_gallery/describe` `{"paths":[...]}` | 批量描述图片路径 |
 | POST | `/local_gallery/delete` `{"paths":[...]}` | 移到回收站（图片 + 同名提示词） |
+| POST | `/local_gallery/reveal` `{"paths":[...]}` | 在系统文件管理器里定位（Windows 用 `explorer /select`，多选最多开 3 个窗口） |
 | POST | `/local_gallery/delete_prompts` `{"paths":[...]}` | 只移走同名提示词，图片保留 |
 | POST | `/local_gallery/search` `{"files":[...],"q":"a b"}` | 按提示词搜当前列表 |
 | GET | `/local_gallery/favorites` | 收藏列表（按时间倒序） |

@@ -3268,6 +3268,13 @@ const I18N_EN = {
   "转换": "Convert",
   "图像对比": "Compare",
   "把选中的两张图放到对比页：滑块 / 并排 / 差异": "Open the two selected images on the compare page: wipe / side by side / difference",
+  "在文件夹中显示": "Show in folder",
+  "在资源管理器里定位这张图": "Reveal this image in Explorer",
+  "打开这些图所在的文件夹（最多 3 个窗口）": "Open the folders holding these images (at most 3 windows)",
+  "已在资源管理器里定位 {name}": "Revealed {name} in Explorer",
+  "已打开 {n} 个文件所在的文件夹": "Opened the folder(s) for {n} files",
+  "已打开前 {n} 个文件夹，另有 {more} 个没打开":
+    "Opened the first {n} folders; {more} more were left closed",
   "图像对比：选中两张图片后右键可以直接对比": "Compare: select two images, then right-click to compare them",
   "图像对比：已选 {n} 张，点这里对比前两张": "Compare: {n} selected — click to compare the first two",
   "图像对比：先在图库选两张图": "Compare: pick two images in Gallery first",
@@ -6838,6 +6845,26 @@ app.registerExtension({
       }
 
 
+      /* 在系统文件管理器里定位（后端 explorer /select） */
+      async function revealPaths(paths) {
+        const list = paths.filter(Boolean);
+        if (!list.length) return;
+        const data = await apiJson("/local_gallery/reveal", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paths: list }),
+        });
+        const opened = Number(data?.opened?.length) || 0;
+        const more = Number(data?.more) || 0;
+        if (data?.single) {
+          setStatus("已在资源管理器里定位 {name}", { vars: { name: shortName(list[0]) } });
+        } else if (more) {
+          setStatus("已打开前 {n} 个文件夹，另有 {more} 个没打开", { vars: { n: opened, more } });
+        } else {
+          setStatus("已打开 {n} 个文件所在的文件夹", { vars: { n: opened } });
+        }
+      }
+
       async function deletePaths(paths, { onRemoved, withPrompts = true } = {}) {
         const list = [...new Set(paths.filter(Boolean))];
         if (!list.length) return;
@@ -9860,6 +9887,12 @@ app.registerExtension({
             cmpSetPair(paths);
           }, { iconName: "compare" });
         }
+        addItem(
+          "在文件夹中显示",
+          single ? "在资源管理器里定位这张图" : "打开这些图所在的文件夹（最多 3 个窗口）",
+          () => revealPaths(paths),
+          { iconName: "folder" }
+        );
 
         // 二级菜单：删除（图片 + 提示词 / 只删提示词 / 只删图片）
         const pad = 8;
