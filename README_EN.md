@@ -66,11 +66,13 @@ Five bands, top to bottom:
 
 The **`Compare`** tab at the far right (or select two images in Gallery → right-click → `Compare`) stacks two images on one stage, like Goohaitools' Image Compare node.
 
-- **Wipe** (default): one divider, A on the left, B on the right — drag it, or switch to top/bottom
-- **Side by side**: each image gets half the stage; zoom and pan stay in sync
-- **Difference**: the two are subtracted, identical areas go black and real changes light up
-- **Zoom / pan**: wheel zooms around the cursor (20%–1600%), drag pans; `Fit` or double-click resets, `1:1` shows actual pixels. Both sides always share the same transform
-- **Changing images**: pick from the A / B dropdowns, `Use the 2 selected`, or `Swap A/B`
+- **Compare mode**: one button on the left cycles `Wipe → Side by side → Difference` (its label shows the current mode)
+  - **Wipe**: one divider, A on the left, B on the right — drag it
+  - **Side by side**: each image gets half the stage; zoom and pan stay in sync
+  - **Difference**: the two are subtracted, identical areas go black and real changes light up
+- **Split direction**: the next button toggles `Left / right` ↔ `Top / bottom` (only in Wipe mode)
+- **Zoom**: wheel zooms around the cursor (20%–1600%), drag pans; the button on the right toggles `1:1` (actual pixels) and `Fit to window`, double-click also resets. Both sides always share the same transform
+- **Changing images**: the pair follows your Gallery selection — pick two images and the page opens with them; `Swap A/B` in the top right flips them
 - The footer shows both file names, resolutions and sizes so you can tell versions apart
 
 ### Right-click menu
