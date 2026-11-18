@@ -72,7 +72,7 @@ The **`Compare`** tab at the far right (or select two images in Gallery → righ
   - **Difference**: the two are subtracted, identical areas go black and real changes light up
 - **Split direction**: the next button toggles `Left / right` ↔ `Top / bottom` (only in Wipe mode)
 - **Zoom**: wheel zooms around the cursor (20%–1600%), drag pans; the button on the right toggles `1:1` (actual pixels) and `Fit to window`, double-click also resets. Both sides always share the same transform
-- **Changing images**: the pair follows your Gallery selection — pick two images and the page opens with them; `Swap A/B` in the top right flips them
+- **Changing images**: the pair follows your Gallery selection — pick two images and the page opens with them; `Swap A/B` (right after the direction toggle) flips them
 - The footer shows both file names, resolutions and sizes so you can tell versions apart
 
 ### Right-click menu

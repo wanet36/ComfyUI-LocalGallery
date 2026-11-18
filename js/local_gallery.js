@@ -9373,7 +9373,7 @@ app.registerExtension({
         const btnSwap = el("button", "lgb-cmp-btn");
         btnSwap.append(icon("swap", 12), tspan("交换 A/B"));
         setTitle(btnSwap, "把 A 和 B 对调，方便看两边的差别");
-        headEl.append(el("h3", "", "图像对比"), hintEl, btnSwap);
+        headEl.append(el("h3", "", "图像对比"), hintEl);
 
         /* —— 工具条：对比方式 / 分割方向 / 缩放 —— */
         const bar = el("div", "lgb-cmp-bar");
@@ -9389,8 +9389,17 @@ app.registerExtension({
         setTitle(btnIn, "放大");
         btnIn.setAttribute("aria-label", "放大");
         const zoomEl = el("span", "lgb-cmp-zoom", "100%");
-        // 缩放比例放最右边，− / + 紧挨着它
-        bar.append(btnMode, btnDir, el("div", "lgb-head-spacer"), btnFit, btnOut, btnIn, zoomEl);
+        // 交换紧跟在「左右/上下」右边；缩放比例放最右边，− / + 紧挨着它
+        bar.append(
+          btnMode,
+          btnDir,
+          btnSwap,
+          el("div", "lgb-head-spacer"),
+          btnFit,
+          btnOut,
+          btnIn,
+          zoomEl
+        );
 
         /* —— 舞台 —— */
         const stage = el("div", "lgb-cmp-stage");
