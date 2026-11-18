@@ -17,6 +17,7 @@ const COLS_DEFAULT = 6;
 const COLS_MIN = 2;
 const COLS_MAX = 10;
 const COLS_KEY = "localGalleryBrowser.cols";
+const SRC_KEY = "localGalleryBrowser.sourceRoot"; // 文件夹筛选：空 = 全部
 const THEME_KEY = "localGalleryBrowser.theme"; // auto | light | dark
 const PICK_KEY = "localGalleryBrowser.pickMode"; // multi | single
 
@@ -1166,6 +1167,27 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   border-radius: var(--lg-r);
   background: var(--lg-sunken);
   padding: 6px;
+}
+
+/* 文件夹筛选行：名字太长就省略，路径全称放 title */
+.lgb-srcbar {
+  padding: 0 8px 2px;
+  min-height: 26px;
+}
+.lgb-srcchip .lbl {
+  max-width: 190px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lgb-srcchip .n {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: var(--lg-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.lgb-srcchip.on .n {
+  color: var(--lg-accent);
 }
 
 /* 框选矩形：挂在 .lgb-canvas 上，坐标就用 grid 的 rect，滚动时自动跟着走 */
@@ -3404,6 +3426,12 @@ const I18N_EN = {
   "已停止 · 完成 {n} 张": "Stopped · {n} done",
   "完成 {n} 张 · 用时 {s}s": "{n} done · {s}s",
   "这些路径下没有图片。到「设置 → 浏览本机路径」勾上「含子目录」，或换一个路径。": "No images under these paths. Tick “Include subfolders” in Settings → Browse local paths, or try another path.",
+  "这个文件夹里没有图片": "No images in this folder",
+  "这个文件夹里没有匹配的图片": "No matching images in this folder",
+  "没有匹配的图片": "No matching images",
+  "只看这个文件夹：{path}": "Showing only {path}",
+  "显示全部图片": "Showing all images",
+  "显示所有加入的文件夹里的图": "Show images from every added folder",
   "已加入输出目录：{dir}": "Output folder added: {dir}",
   "转换任务还在跑，等它结束或先点「取消任务」": "A conversion is still running — wait or cancel it first",
   "先选一个输出文件夹": "Pick an output folder first",
@@ -4389,6 +4417,15 @@ app.registerExtension({
         favFolder: "all",
         favUnclassified: 0,
         source: "paths",
+        // 文件夹筛选：root = 选中的根目录（空 = 全部），roots = 本次扫描到的所有根目录
+        root: (() => {
+          try {
+            return localStorage.getItem(SRC_KEY) || "";
+          } catch (err) {
+            return "";
+          }
+        })(),
+        roots: [],
         searchMode: "name",
         // 排序：default / name-asc / name-desc / time-desc / time-asc
         sortMode: "default",
@@ -4741,6 +4778,10 @@ app.registerExtension({
 
       const chips = el("div", "lgb-chips");
 
+      /* 文件夹筛选：一行 chips —— 全部 + 每个加入的根目录 */
+      const srcBar = el("div", "lgb-chips lgb-srcbar");
+      srcBar.style.display = "none";
+
       /* 筛选 + 搜索：合并成一行，给网格让出高度 */
       const filters = el("div", "lgb-filters");
       function mkCheck(labelText, checked) {
@@ -4911,6 +4952,7 @@ app.registerExtension({
       wrap.append(
         head,
         rowAdd,
+        srcBar,
         chips,
         pageGallery,
         pagePrompts,
@@ -4982,6 +5024,78 @@ app.registerExtension({
         setTitle(addChip, "新建一个收藏夹");
         addChip.addEventListener("click", () => createFolderFlow());
         chips.append(addChip);
+      }
+
+      /* ---------------- 文件夹筛选（路径栏下面那行 chips） ---------------- */
+      function sourceLabel(root) {
+        return shortName(root) || root;
+      }
+
+      function setSourceRoot(value) {
+        const next = value || "";
+        if (next === state.root) return;
+        state.root = next;
+        try {
+          localStorage.setItem(SRC_KEY, next);
+        } catch (err) {
+          /* 存不住就只在本次会话生效 */
+        }
+        // 被筛掉的图从选中里剔掉，免得「已选 3」却只看见 1 张
+        if (state.selected.size) {
+          const visible = new Set(visibleItems().map((it) => it.path));
+          let dropped = false;
+          for (const path of [...state.selected.keys()]) {
+            if (!visible.has(path)) {
+              state.selected.delete(path);
+              dropped = true;
+            }
+          }
+          if (dropped) {
+            renumberSelection();
+            commitSelection();
+            paintSelection();
+          }
+        }
+        state.rendered = 0;
+        state.tl = null;
+        gridScroll.scrollTop = 0;
+        renderSourceBar();
+        renderGrid();
+        updateTabCounts();
+        setStatus(next ? "只看这个文件夹：{path}" : "显示全部图片", { vars: { path: next } });
+      }
+
+      function renderSourceBar() {
+        const showable = activeTab === "gallery" || activeTab === "favorites";
+        const roots = state.roots || [];
+        if (!showable || !roots.length) {
+          srcBar.style.display = "none";
+          srcBar.replaceChildren();
+          return;
+        }
+        srcBar.style.display = "";
+        srcBar.replaceChildren();
+
+        const counts = new Map();
+        state.items.forEach((it) => {
+          const key = it.root || "";
+          counts.set(key, (counts.get(key) || 0) + 1);
+        });
+
+        const mk = (value, label, hint, count) => {
+          // 复用收藏夹 chip 的样式（小圆点 + 选中态），只额外加省略
+          const chip = el("div", "lgb-chip lgb-folderchip lgb-srcchip");
+          chip.classList.toggle("on", (state.root || "") === value);
+          chip.append(el("span", "lbl", label), el("span", "n", String(count || 0)));
+          setTitle(chip, hint);
+          chip.addEventListener("click", () => setSourceRoot(value));
+          return chip;
+        };
+
+        srcBar.append(mk("", "全部", "显示所有加入的文件夹里的图", state.items.length));
+        roots.forEach((root) => {
+          srcBar.append(mk(root, sourceLabel(root), root, counts.get(root) || 0));
+        });
       }
 
       // 供「浏览」弹窗渲染已加入的路径
@@ -5063,6 +5177,10 @@ app.registerExtension({
       }
 
       function visibleItems() {
+        // 先按「文件夹」筛：选了某个根目录就只留它下面的图
+        const base = state.root
+          ? state.items.filter((it) => (it.root || "") === state.root)
+          : state.items;
         const keywords = state.filter.toLowerCase().split(/\s+/).filter(Boolean);
         const nameMatch = (item) => {
           if (!keywords.length) return true;
@@ -5072,17 +5190,15 @@ app.registerExtension({
 
         // 没关键词：只受提示词命中集约束
         if (!keywords.length) {
-          return state.promptHits
-            ? state.items.filter((it) => state.promptHits.has(it.path))
-            : state.items;
+          return state.promptHits ? base.filter((it) => state.promptHits.has(it.path)) : base;
         }
         // 名称模式，或提示词结果还没回来
         if (state.searchMode === "name" || !state.promptHits) {
-          return state.items.filter(nameMatch);
+          return base.filter(nameMatch);
         }
         // 提示词模式以命中集为准；「全部」再并上名称命中的
-        const byName = new Set(state.items.filter(nameMatch).map((it) => it.path));
-        return state.items.filter(
+        const byName = new Set(base.filter(nameMatch).map((it) => it.path));
+        return base.filter(
           (it) =>
             state.promptHits.has(it.path) ||
             (state.searchMode === "both" && byName.has(it.path))
@@ -6067,6 +6183,7 @@ app.registerExtension({
         syncConvertPage();
         // 对比页的按钮文字 / 提示是渲染时生成的，切语言要重刷一遍
         cmp.ui?.syncAll();
+        renderSourceBar();
         renderChips();
         // 「今天 / 昨天」这类组标题是渲染时生成的，切语言要重画一遍
         state.tl = null;
@@ -6129,7 +6246,8 @@ app.registerExtension({
         // 路径栏（浏览 / 设置 / 刷新 / 回收站）只在能看图的两个页签出现；
         // 提示词页把整块批量删除挪进提示词栏，那里也有一颗「删除选中」
         rowAdd.style.display = isGridView ? "" : "none";
-        // 收藏夹栏跟着页签走（不在收藏页就收起）
+        // 收藏夹栏 / 文件夹筛选行跟着页签走
+        renderSourceBar();
         renderChips();
         if (isPrompts) promptBar.append(bulk);
         else if (isGridView) rowAdd.insertBefore(bulk, btnTrash);
@@ -10942,11 +11060,23 @@ app.registerExtension({
         }
 
         if (!items.length) {
-          const empty = el("div", "lgb-empty", state.busy
+          // 空状态的文案分清楚是「路径没图」还是「筛选/搜索筛没了」
+          const filtering = !!state.filter.trim();
+          const noImageHint = "这些路径下没有图片。到「设置 → 浏览本机路径」勾上「含子目录」，或换一个路径。";
+          const emptyText = state.busy
             ? "正在扫描路径…"
-            : getPaths().length
-              ? "这些路径下没有图片。到「设置 → 浏览本机路径」勾上「含子目录」，或换一个路径。"
-              : "还没有图片 —— 打开「设置 → 浏览本机路径」加一个文件夹。");
+            : !getPaths().length
+              ? "还没有图片 —— 打开「设置 → 浏览本机路径」加一个文件夹。"
+              : state.items.length
+                ? state.root
+                  ? filtering
+                    ? "这个文件夹里没有匹配的图片"
+                    : "这个文件夹里没有图片"
+                  : filtering
+                    ? "没有匹配的图片"
+                    : noImageHint
+                : noImageHint;
+          const empty = el("div", "lgb-empty", emptyText);
           grid.classList.remove("timeline");
           grid.replaceChildren();
           listBox.replaceChildren();
@@ -11042,6 +11172,8 @@ app.registerExtension({
           state.orphanCount = 0;
           state.orphanLoaded = false;
           state.busy = false;
+          state.roots = [];
+          renderSourceBar();
           renderChips();
           renderGrid();
           updateTabCounts();
@@ -11075,6 +11207,7 @@ app.registerExtension({
         let truncated = false;
         let orphan = 0;
         let orphanSamples = [];
+        let roots = [];
         try {
           const data = await apiJson("/local_gallery/list", {
             method: "POST",
@@ -11086,6 +11219,7 @@ app.registerExtension({
           truncated = !!data.truncated;
           orphan = Number(data.orphan_prompts) || 0;
           orphanSamples = Array.isArray(data.orphan_samples) ? data.orphan_samples : [];
+          roots = Array.isArray(data.roots) ? data.roots.filter(Boolean) : [];
           if (!data.ok && data.error) errorText = data.error;
         } catch (err) {
           errorText = t("扫描失败：{err}", { err: err.message || err });
@@ -11094,6 +11228,19 @@ app.registerExtension({
         if (seq !== state.seq) return;
 
         state.items = items;
+        // 去重后记下这次扫描到的根目录，供「文件夹」筛选用
+        const rootList = [];
+        roots.forEach((root) => {
+          if (!rootList.includes(root)) rootList.push(root);
+        });
+        if (!rootList.length) {
+          items.forEach((it) => {
+            if (it.root && !rootList.includes(it.root)) rootList.push(it.root);
+          });
+        }
+        state.roots = rootList;
+        // 之前选中的目录已经不在了（换了路径 / 删了文件夹）就回到「全部」
+        if (state.root && !rootList.includes(state.root)) state.root = "";
         // 记下扫描顺序（排序切回「默认」时用），再按当前排序规则排一遍
         items.forEach((it, i) => {
           it.__ord = i;
@@ -11110,6 +11257,7 @@ app.registerExtension({
         }
         state.busy = false;
         state.promptCache.clear();
+        renderSourceBar();
         renderChips();
         renderGrid();
         // 图库页刷新后，提示词页（固定跟图库）要跟着重绘；收藏页的刷新不用动它

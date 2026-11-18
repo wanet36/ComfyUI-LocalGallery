@@ -58,6 +58,7 @@ Five bands, top to bottom:
 |---|---|
 | **Tab bar** | Six tabs: `Gallery / Favorites / Prompts / Caption / Convert / Compare` (counts live in the tooltip, not on the buttons) |
 | **Path bar** (Gallery / Favorites) | Settings (holds the whole *Browse local paths* block: Choose folder / in-panel browser), ⟳ rescan, the batch group (`Select all` / `Clear selection`; Favorites adds `Unfavorite (N)`), Trash |
+| **Folder row** | One row of chips under the path bar: `All` plus every added folder (with counts) — click one to show only that folder; remembered locally |
 | **Filter row** | **Grid / list slider** on the left, then **Group by day**, sort button, search-scope button, search box, `hits / total` (Include subfolders / Only with prompt live in Settings) |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page). A **list mode** is one click away: one image per row with thumbnail, name, resolution/size and prompt tags |
 | **Footer** | **Single / multi-select slider** (click either side and the knob slides over), selection count, status text |
@@ -106,6 +107,7 @@ Paths can be folders, single images, or a mix. The same file reached through sev
 <img src="docs/hover.jpg" width="500" alt="Hover to read the prompt">
 
 - Click a thumbnail to select/deselect, `Shift + click` to select a range
+- **Show one folder only**: the chip row under the path bar lists `All` and every added folder (name + count, full path in the tooltip). Click one to show just that folder, click `All` to go back. The filter stacks with search and sorting, images filtered out are dropped from the selection, and the choice is remembered
 - **Grid / list**: the slider at the far left of the filter row switches `Grid` ↔ `List` — in list mode one image per row: small thumbnail on the left, name, `resolution · size`, and the prompt split into tag chips (overflow clipped), with the row number on the right and copy / favorite / preview / delete appearing on hover. Group-by-day and **marquee selection** work in list mode too (the rectangle selects every row it touches). Selection, select-all, delete, sorting and search all keep working, and the choice is remembered
 - **Group by day**: the `Group by day` button in the filter row stacks thumbnails by **modified time**, one block per day (`Today` / `Yesterday` / `11-12` …). Headers show the count, stick to the top while scrolling, and collapse on click; columns stay aligned across blocks and each block is still a waterfall (in list mode a block is a header plus its rows). Selecting, marquee, select-all and delete keep working. Remembered locally
 - **Sorting**: the sort button in the filter row opens a two-column menu — left picks the **field** (`Name` / `Time` / `Scan order`), right picks the **direction** (`Ascending` / `Descending`). It closes on pick, `Esc`, or a click outside, and the button shows the current sort (e.g. `Time ↓`). File names compare by value (`0002` before `0010`), time is the file's modified time; applies to Gallery, Favorites and Prompts alike, never touches the selection, and is remembered locally
