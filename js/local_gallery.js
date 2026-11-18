@@ -3437,6 +3437,8 @@ const I18N_EN = {
   "已停止 · 完成 {n} 张": "Stopped · {n} done",
   "完成 {n} 张 · 用时 {s}s": "{n} done · {s}s",
   "这些路径下没有图片。到「设置 → 浏览本机路径」勾上「含子目录」，或换一个路径。": "No images under these paths. Tick “Include subfolders” in Settings → Browse local paths, or try another path.",
+  "这些路径下只有 {n} 个提示词文件，没有图片 —— 图库只显示图片，这些 .txt 可以去「提示词 → 无匹配提示词」里看":
+    "These paths hold {n} prompt files but no images — the gallery only lists images; those .txt files show up under Prompts → Orphans",
   "这个文件夹里没有图片": "No images in this folder",
   "这个文件夹里没有匹配的图片": "No matching images in this folder",
   "没有匹配的图片": "No matching images",
@@ -11078,8 +11080,12 @@ app.registerExtension({
                   : filtering
                     ? "没有匹配的图片"
                     : noImageHint
-                : noImageHint;
-          const empty = el("div", "lgb-empty", emptyText);
+                : state.orphanPrompts
+                  ? "这些路径下只有 {n} 个提示词文件，没有图片 —— 图库只显示图片，这些 .txt 可以去「提示词 → 无匹配提示词」里看"
+                  : noImageHint;
+          const empty = state.orphanPrompts && !state.items.length && !state.busy
+            ? elTpl("div", "lgb-empty", emptyText, { n: state.orphanPrompts })
+            : el("div", "lgb-empty", emptyText);
           grid.classList.remove("timeline");
           grid.replaceChildren();
           listBox.replaceChildren();
