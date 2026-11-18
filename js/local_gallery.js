@@ -1048,15 +1048,6 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
 }
 
 /* ========================================================== 筛选 + 搜索 */
-.lgb-filters {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 0 0 auto;
-  min-width: 0;
-  /* 跟下面的文件夹行 / 网格左右对齐（以前在 .lgb-page 里靠它的 padding） */
-  padding: 0 8px;
-}
 .lgb-chk {
   display: flex;
   align-items: center;
@@ -1084,6 +1075,10 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   display: flex;
   align-items: center;
   flex: 1 1 150px;
+  max-width: 280px;
+  margin-left: 2px;
+  /* 框窄的时候占位文案用省略号收尾，别像被切断 */
+  min-width: 0;
   min-width: 110px;
   height: var(--lg-ctl-h);
   background: var(--lg-sunken);
@@ -1091,6 +1086,11 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   border-radius: var(--lg-r);
   overflow: hidden;
   transition: border-color var(--lg-dur), box-shadow var(--lg-dur), background var(--lg-dur);
+}
+.lgb-search .lgb-input::placeholder {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .lgb-search:focus-within {
   background: var(--lg-bg);
@@ -4779,13 +4779,6 @@ app.registerExtension({
       setTitle(btnNone, "取消全部选中");
       bulk.append(btnUnfav, btnDelSel, btnAll, btnNone);
 
-      rowAdd.append(
-        btnSettings,
-        btnReload,
-        el("div", "lgb-head-spacer"),
-        bulk,
-        btnTrash
-      );
 
       const chips = el("div", "lgb-chips");
 
@@ -4793,8 +4786,6 @@ app.registerExtension({
       const srcBar = el("div", "lgb-chips lgb-srcbar");
       srcBar.style.display = "none";
 
-      /* 筛选 + 搜索：合并成一行，给网格让出高度 */
-      const filters = el("div", "lgb-filters");
       function mkCheck(labelText, checked) {
         const label = el("label", "lgb-chk");
         const input = document.createElement("input");
@@ -4818,7 +4809,6 @@ app.registerExtension({
       const sortLabel = el("span", "", "默认");
       sortModeBtn.append(sortLabel, el("span", "caret", "▾"));
       setTitle(sortModeBtn, "排序：点开选「名称 / 时间」和「顺序 / 倒序」");
-      const countLabel = el("span", "lgb-count", "—");
       // 按时间分组：把缩略图按文件修改时间「一天一坨」
       const btnGroup = el("button", "lgb-mode", "时间分组");
       btnGroup.addEventListener("click", () => applyTimeGroup(!state.timeGroup));
@@ -4838,15 +4828,18 @@ app.registerExtension({
         if (evt.target.closest?.(".seg")) return;
         setViewMode(state.view === "list" ? "grid" : "list");
       });
-      // 挪到路径栏：「重新扫描」按钮右边，跟设置/回收站一排
-      btnReload.after(viewSwitch);
-      // 「含子目录 / 仅有提示词」收进设置，这里只留视图相关的筛选
-      filters.append(
-        el("div", "lgb-head-spacer"),
+      /* 顶栏右侧：设置 / 重新扫描（跟页签同一行，贴最右） */
+      head.append(btnSettings, btnReload);
+
+      /* 路径栏：网格·列表 + 时间分组 在最左，右边依次排序、批量、回收站，搜索框贴最右 */
+      rowAdd.append(
+        viewSwitch,
         btnGroup,
+        el("div", "lgb-head-spacer"),
         sortModeBtn,
-        searchBox,
-        countLabel
+        bulk,
+        btnTrash,
+        searchBox
       );
 
       const gridScroll = el("div", "lgb-scroll");
@@ -4964,7 +4957,6 @@ app.registerExtension({
       wrap.append(
         head,
         rowAdd,
-        filters,
         srcBar,
         chips,
         pageGallery,
@@ -6261,7 +6253,6 @@ app.registerExtension({
         // 路径栏（浏览 / 设置 / 刷新 / 回收站）只在能看图的两个页签出现；
         // 提示词页把整块批量删除挪进提示词栏，那里也有一颗「删除选中」
         rowAdd.style.display = isGridView ? "" : "none";
-        filters.style.display = isGridView ? "" : "none";
         // 收藏夹栏 / 文件夹筛选行跟着页签走
         renderSourceBar();
         renderChips();
@@ -11062,17 +11053,6 @@ app.registerExtension({
         // 只有图库页的渲染结果才是提示词页的依据
         if (state.source === "paths") state.galleryVisible = items;
 
-        if (state.items.length) {
-          setTpl(countLabel, "{a} / {b} 张{done}", {
-            a: items.length,
-            b: state.items.length,
-            done: state.busy ? ` · ${t("读取中")}` : "",
-          });
-        } else {
-          if (state.busy) setTpl(countLabel, "读取中…");
-          else countLabel.textContent = "—";
-        }
-
         if (!items.length) {
           // 空状态的文案分清楚是「路径没图」还是「筛选/搜索筛没了」
           const filtering = !!state.filter.trim();
@@ -11205,7 +11185,6 @@ app.registerExtension({
 
         const seq = ++state.seq;
         state.busy = true;
-        if (!silent) setTpl(countLabel, "读取中…");
         setStatus("正在扫描 {n} 个路径…", { vars: { n: paths.length } });
 
         // 走 POST：收藏多的时候（几百张）路径拼进 URL 会被服务端 431/400 顶回来
