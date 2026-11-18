@@ -3354,7 +3354,9 @@ const I18N_EN = {
   "当前列表 {n} 张": "{n} in list",
   "将转换：选中的 {sel} 张（当前列表 {all} 张）· 原图默认保留":
     "Converting the {sel} selected (list has {all}) · originals kept",
-  "将转换：当前列表 {all} 张 · 原图默认保留": "Converting all {all} in the list · originals kept",
+  "将转换：选中的 {sel} 张 · 原图默认保留": "Converting the {sel} selected · originals kept",
+  "先在图库选中图片 —— 转换只处理选中的图（当前列表 {all} 张）":
+    "Select images in Gallery first — conversion only touches the selection ({all} in the list)",
   "当前列表没有图片 —— 先在图库加一个文件夹": "No images in the list — add a folder in Gallery first",
   "成功 {ok} 张": "{ok} converted",
   "失败 {n} 张": "{n} failed",
@@ -3381,7 +3383,7 @@ const I18N_EN = {
   "已清空提示词的选择": "Prompt selection cleared",
   "共 {n} 张": "{n} images",
   "预览": "Preview",
-  "范围里还没有图片": "No images in this scope",
+  "还没有选中图片 —— 回图库选几张再回来": "Nothing selected yet — pick some images in Gallery",
   "共 {n} 张，只列前 {m} 张；转换时按范围全部处理":
     "{n} images — showing the first {m}; conversion still covers the whole scope",
   "已读到 {n} 张图，悬停看提示词": "{n} images loaded, hover to preview prompts",
@@ -8770,27 +8772,25 @@ app.registerExtension({
         return { selected: state.selected.size, all: visibleItems().length };
       }
 
-      // 不再让用户选范围：选了图就只转选中的，没选就是当前列表
-      function convScope() {
-        return state.selected.size ? "selected" : "all";
-      }
+      // 转换永远只处理选中的图：没选就什么都转不了（不再回退到整个列表）
 
       // 选中数 / 列表数变了，页面上的按钮和提示跟着变
       function syncConvertPage() {
         const ui = conv.ui;
         if (!ui) return;
         const { selected, all } = convCounts();
-        const scope = convScope();
         setTpl(
           ui.hint,
-          all
-            ? scope === "selected"
+          selected
+            ? all
               ? "将转换：选中的 {sel} 张（当前列表 {all} 张）· 原图默认保留"
-              : "将转换：当前列表 {all} 张 · 原图默认保留"
-            : "当前列表没有图片 —— 先在图库加一个文件夹",
+              : "将转换：选中的 {sel} 张 · 原图默认保留"
+            : all
+              ? "先在图库选中图片 —— 转换只处理选中的图（当前列表 {all} 张）"
+              : "当前列表没有图片 —— 先在图库加一个文件夹",
           { all, sel: selected }
         );
-        ui.start.disabled = !!conv.job || !(scope === "selected" ? selected : all);
+        ui.start.disabled = !!conv.job || !selected;
       }
 
       function ensureConvertPage() {
@@ -9042,13 +9042,11 @@ app.registerExtension({
 
         let previewSig = "";
         function convTargets() {
-          return convScope() === "selected"
-            ? [...state.selected.keys()]
-            : visibleItems().map((it) => it.path);
+          return [...state.selected.keys()];
         }
         function renderPreview(force = false) {
           const paths = convTargets();
-          const sig = `${convScope()}|${paths.length}|${paths.slice(0, PREVIEW_MAX).join("\n")}`;
+          const sig = `${paths.length}|${paths.slice(0, PREVIEW_MAX).join("\n")}`;
           if (!force && sig === previewSig) return;
           previewSig = sig;
           previewList.replaceChildren();
@@ -9062,7 +9060,9 @@ app.registerExtension({
             row.append(mkPic(path), mid);
             previewList.append(row);
           });
-          if (!paths.length) previewList.append(el("div", "lgb-rev-empty", "范围里还没有图片"));
+          if (!paths.length) {
+            previewList.append(el("div", "lgb-rev-empty", "还没有选中图片 —— 回图库选几张再回来"));
+          }
           setTpl(
             previewHint,
             paths.length > PREVIEW_MAX
@@ -9162,7 +9162,7 @@ app.registerExtension({
         }
 
         function collectPaths() {
-          return convScope() === "selected" ? [...state.selected.keys()] : visibleItems().map((it) => it.path);
+          return [...state.selected.keys()];
         }
 
         function setRunning(on) {

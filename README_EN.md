@@ -218,7 +218,7 @@ It's the same chain as `LoadImage → WD14Tagger → TIPO → SaveText`, but wit
 
 Batch format conversion, size compression and resizing — **no VRAM involved**, it reads and writes files directly.
 
-No scope switch to pick: **if anything is selected only those are converted, otherwise the whole current list** — the header states how many files this batch covers.
+**Only the selected images are converted**: with nothing selected the `Start` button stays disabled and the header asks you to pick images first.
 
 | Option | Description |
 |---|---|
@@ -226,7 +226,7 @@ No scope switch to pick: **if anything is selected only those are converted, oth
 | Compression | **By quality** 0–100 slider; **By size** with a target KB — binary-searches the best quality that fits |
 | Resize | None / by long edge / by percentage, plus size alignment (multiple of 2/8/16/32/64) |
 | Output | **Same folder · new file** (`a.png → a.webp`, `a.jpg → a_c.jpg`) / **Chosen folder** / **Overwrite original** |
-| Preview | Lists the images in scope (same row style as the Gallery list mode); the first 40 are shown and it refreshes when the scope changes |
+| Preview | Lists exactly the images that will be converted (same row style as the Gallery list mode); the first 40 are shown |
 | Copy prompts | On by default — writes a matching `.txt` next to the new file |
 
 - Originals are untouched by default, so you can test on a batch first
