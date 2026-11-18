@@ -9177,7 +9177,8 @@ app.registerExtension({
         setTitle(btnIn, "放大");
         btnIn.setAttribute("aria-label", "放大");
         const zoomEl = el("span", "lgb-cmp-zoom", "100%");
-        bar.append(btnMode, btnDir, el("div", "lgb-head-spacer"), btnFit, btnOut, zoomEl, btnIn);
+        // 缩放比例放最右边，− / + 紧挨着它
+        bar.append(btnMode, btnDir, el("div", "lgb-head-spacer"), btnFit, btnOut, btnIn, zoomEl);
 
         /* —— 舞台 —— */
         const stage = el("div", "lgb-cmp-stage");
