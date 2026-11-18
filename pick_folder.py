@@ -197,6 +197,12 @@ def _pick_com(initial: str = "") -> list[str]:
 
 
 def main() -> int:
+    # 输出统一走 UTF-8：上层用 bytes 解码，别让 Windows 的中文 locale 把
+    # 「二采」这种目录名搞成「浜岄噰」
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+    except Exception:  # noqa: BLE001 - 老 Python 没有 reconfigure 就算了
+        pass
     initial = sys.argv[1] if len(sys.argv) > 1 else ""
     if not os.path.isdir(initial):
         initial = ""

@@ -201,15 +201,29 @@ def register_routes() -> bool:
         if initial:
             args.append(initial)
 
+        def decode(raw: bytes) -> str:
+            """子进程输出统一按 UTF-8 解；实在不行再退回本地编码。
+
+            以前用 text=True，等于按系统的 cp936 解，中文目录名会变成
+            「浜岄噰」这种乱码（UTF-8 字节被当 GBK 读）。
+            """
+            if not raw:
+                return ""
+            for encoding in ("utf-8", "gbk"):
+                try:
+                    return raw.decode(encoding)
+                except UnicodeDecodeError:
+                    continue
+            return raw.decode("utf-8", "replace")
+
         def run() -> tuple[str, str]:
             proc = subprocess.run(
                 args,
                 capture_output=True,
-                text=True,
                 timeout=300,
                 creationflags=0x08000000 if os.name == "nt" else 0,  # 别弹黑框
             )
-            return proc.stdout or "", proc.stderr or ""
+            return decode(proc.stdout), decode(proc.stderr)
 
         loop = asyncio.get_running_loop()
         try:

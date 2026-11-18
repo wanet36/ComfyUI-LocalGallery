@@ -221,6 +221,19 @@ def _clean_path_text(text: str) -> str:
     return str(text or "").strip().strip('"').strip("'").strip()
 
 
+def _repair_mojibake_path(text: str) -> str:
+    """把「UTF-8 被当 GBK 解」的乱码路径还原（二采 -> 浜岄噰 的反向）。
+
+    老版本用 text=True 读系统选择框的子进程输出，中文目录名会被解成乱码并
+    存进路径列表；已经存进去的在解析时顺手修正一下，用户不用手动删。
+    """
+    try:
+        fixed = text.encode("gbk").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return ""
+    return fixed if fixed and fixed != text else ""
+
+
 def resolve_input_paths(raw: str) -> list[Path]:
     """把用户输入拆成路径列表。换行 / 分号 / 竖线都算分隔符（逗号不算，怕误伤目录名）。"""
     text = raw if isinstance(raw, str) else str(raw or "")
@@ -233,6 +246,12 @@ def resolve_input_paths(raw: str) -> list[Path]:
         if not cleaned:
             continue
         path = Path(os.path.expandvars(os.path.expanduser(cleaned)))
+        # 路径不存在时试一下乱码还原，救回早期存进去的「浜岄噰」们
+        if not path.exists():
+            fixed = _repair_mojibake_path(str(path))
+            if fixed and Path(fixed).exists():
+                logger.info("[LocalGallery] 修正乱码路径：%s -> %s", path, fixed)
+                path = Path(fixed)
         key = str(path).lower()
         if key in seen:
             continue
