@@ -1170,6 +1170,13 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
 }
 
 /* 文件夹筛选行：名字太长就省略，路径全称放 title */
+.lgb-bar .lgb-viewswitch {
+  height: var(--lg-ctl-h);
+  margin: 0 2px;
+}
+.lgb-bar .lgb-viewswitch .seg {
+  font-size: 11px;
+}
 .lgb-srcbar {
   padding: 0 8px 2px;
   min-height: 26px;
@@ -4813,7 +4820,7 @@ app.registerExtension({
       // 按时间分组：把缩略图按文件修改时间「一天一坨」
       const btnGroup = el("button", "lgb-mode", "时间分组");
       btnGroup.addEventListener("click", () => applyTimeGroup(!state.timeGroup));
-      // 视图：网格 / 列表（滑块，放筛选行最左）
+      // 视图：网格 / 列表（滑块，挂在路径栏「重新扫描」右边，见下面的 btnReload.after）
       const viewSwitch = el("div", "lgb-switch lgb-viewswitch");
       const viewKnob = el("span", "knob");
       const segGrid = el("button", "seg");
@@ -4829,9 +4836,10 @@ app.registerExtension({
         if (evt.target.closest?.(".seg")) return;
         setViewMode(state.view === "list" ? "grid" : "list");
       });
+      // 挪到路径栏：「重新扫描」按钮右边，跟设置/回收站一排
+      btnReload.after(viewSwitch);
       // 「含子目录 / 仅有提示词」收进设置，这里只留视图相关的筛选
       filters.append(
-        viewSwitch,
         el("div", "lgb-head-spacer"),
         btnGroup,
         sortModeBtn,
