@@ -2910,6 +2910,270 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   color: var(--lg-danger);
 }
 
+/* ============================================================ 图像对比 */
+.lgb-cmp {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+.lgb-cmp-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.lgb-cmp-head h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--lg-text);
+  white-space: nowrap;
+}
+.lgb-cmp-head .hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 10.5px;
+  color: var(--lg-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lgb-cmp-bar {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-wrap: wrap;
+  flex: 0 0 auto;
+}
+.lgb-cmp-pick {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  height: 24px;
+  padding: 0 5px 0 7px;
+  border: 1px solid var(--lg-line);
+  border-radius: var(--lg-r-sm);
+  background: var(--lg-elev);
+}
+.lgb-cmp-pick .tag {
+  flex: 0 0 auto;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--lg-accent);
+}
+.lgb-cmp-pick select {
+  max-width: 168px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--lg-text);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.lgb-cmp-pick select option {
+  background: var(--lg-elev);
+  color: var(--lg-text);
+}
+.lgb-cmp-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 130px;
+  overflow: hidden;
+  border: 1px solid var(--lg-line);
+  border-radius: var(--lg-r);
+  background: var(--lg-sunken);
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+}
+.lgb-cmp-stage.panning {
+  cursor: grabbing;
+}
+.lgb-cmp-layer {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+}
+/* 两张图叠着，靠 board 的 transform 同步缩放/平移 */
+.lgb-cmp-board {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transform-origin: center center;
+  will-change: transform;
+}
+.lgb-cmp-board img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: 100%;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+/* 滑块：B 层按分隔位置裁掉一部分 */
+.lgb-cmp-stage[data-mode="wipe"] .lgb-cmp-layer.b {
+  clip-path: inset(0 0 0 50%);
+}
+.lgb-cmp-stage[data-mode="wipe"][data-dir="v"] .lgb-cmp-layer.b {
+  clip-path: inset(50% 0 0 0);
+}
+/* 并排：左右各一半，各自装满 */
+.lgb-cmp-stage[data-mode="side"] .lgb-cmp-layer.a {
+  right: 50%;
+}
+.lgb-cmp-stage[data-mode="side"] .lgb-cmp-layer.b {
+  left: 50%;
+  clip-path: none;
+  border-left: 1px solid var(--lg-line-2);
+}
+/* 差异：B 层用 difference 混合，完全重合的地方发黑 */
+.lgb-cmp-stage[data-mode="diff"] .lgb-cmp-layer.b {
+  clip-path: none;
+  mix-blend-mode: difference;
+}
+.lgb-cmp-split {
+  position: absolute;
+  z-index: 5;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 15px;
+  margin-left: -7.5px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.lgb-cmp-split::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.32);
+}
+.lgb-cmp-stage[data-dir="v"] .lgb-cmp-split {
+  left: 0;
+  right: 0;
+  top: 50%;
+  bottom: auto;
+  width: auto;
+  height: 15px;
+  margin-left: 0;
+  margin-top: -7.5px;
+  cursor: row-resize;
+}
+.lgb-cmp-stage[data-dir="v"] .lgb-cmp-split::after {
+  left: 0;
+  right: 0;
+  top: 50%;
+  bottom: auto;
+  width: auto;
+  height: 1px;
+}
+.lgb-cmp-split .knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--lg-line-2);
+  background: var(--lg-elev);
+  color: var(--lg-text-2);
+  font-size: 12px;
+  line-height: 1;
+  box-shadow: var(--lg-shadow-1);
+  pointer-events: none;
+}
+.lgb-cmp-split .knob svg {
+  display: block;
+  opacity: 0.9;
+  transition: transform 140ms ease;
+}
+.lgb-cmp-stage[data-mode="side"] .lgb-cmp-split,
+.lgb-cmp-stage[data-mode="diff"] .lgb-cmp-split {
+  display: none;
+}
+.lgb-cmp-tag {
+  position: absolute;
+  top: 6px;
+  z-index: 3;
+  max-width: 46%;
+  padding: 2px 7px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 10px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+.lgb-cmp-tag.a {
+  left: 6px;
+}
+.lgb-cmp-tag.b {
+  right: 6px;
+}
+.lgb-cmp-tag b {
+  margin-right: 4px;
+  font-weight: 700;
+  color: #9ec6ff;
+}
+.lgb-cmp-empty {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--lg-text-3);
+}
+.lgb-cmp-empty.off {
+  display: none;
+}
+.lgb-cmp-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+  font-size: 10.5px;
+  color: var(--lg-text-3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.lgb-cmp-foot .sp {
+  flex: 1 1 auto;
+}
+.lgb-cmp-foot .zoomv {
+  font-family: var(--lg-mono);
+  color: var(--lg-text-2);
+}
+.lgb-cmp-foot .meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ============================================================ 无障碍 */
 @media (prefers-reduced-motion: reduce) {
   .lgb-wrap *,
@@ -2996,6 +3260,11 @@ const I18N_EN = {
   "无匹配提示词": "Orphans",
   "反推": "Caption",
   "转换": "Convert",
+  "图像对比": "Compare",
+  "把选中的两张图放到对比页：滑块 / 并排 / 差异": "Open the two selected images on the compare page: wipe / side by side / difference",
+  "图像对比：选中两张图片后右键可以直接对比": "Compare: select two images, then right-click to compare them",
+  "图像对比：已选 {n} 张，点这里对比前两张": "Compare: {n} selected — click to compare the first two",
+  "图像对比：先在图库选两张图": "Compare: pick two images in Gallery first",
   "收藏的图片": "Favorited images",
   "查看当前列表的提示词": "Show prompts of the current list",
   "把选中的图片反推成提示词，可写回同名 .txt": "Caption selected images, write back to .txt",
@@ -3600,6 +3869,33 @@ const I18N_EN = {
   "选这个文件夹": "Use this folder",
   "如 @wanet": "e.g. @wanet",
   "（没有识别到内容，可以手动填）": "(nothing parsed — fill it in manually)",
+
+  // 图像对比
+  "滑块": "Wipe",
+  "并排": "Side by side",
+  "差异": "Difference",
+  "左右": "Left / right",
+  "上下": "Top / bottom",
+  "取选中的两张": "Use the 2 selected",
+  "交换 A/B": "Swap A/B",
+  "适应窗口": "Fit to window",
+  "原始大小": "Actual size",
+  "放大": "Zoom in",
+  "缩小": "Zoom out",
+  "复位缩放": "Reset zoom",
+  "滚轮缩放 · 拖动平移 · 双击复位": "Wheel to zoom · drag to pan · double-click to reset",
+  "左右拖动这条线看两边": "Drag this line left/right to reveal either side",
+  "上下拖动这条线看两边": "Drag this line up/down to reveal either side",
+  "拖出对比框：滚轮缩放、按住拖动平移": "Wheel to zoom, drag to pan",
+  "在图库选中两张图片，右键 →「图像对比」就能直接对比": "Select two images in Gallery, then right-click → Compare",
+  "A/B 至少各有一张图才能对比": "Pick an image for both A and B",
+  "选一张图": "Pick an image",
+  "这张图读取失败": "This image failed to load",
+  "{w}×{h} · {size}": "{w}×{h} · {size}",
+  "{w}×{h}": "{w}×{h}",
+  "尺寸不同：{a} 对 {b}": "Different sizes: {a} vs {b}",
+  "尺寸一致：{a}": "Same size: {a}",
+  "没读过尺寸": "size unknown",
 };
 
 let lang = "zh";
@@ -3823,6 +4119,10 @@ const ICON_PATHS = {
   text: '<path d="M3 3.8h10"/><path d="M3 7.4h10"/><path d="M3 11h6.2"/>',
   sun: '<circle cx="8" cy="8" r="2.9"/><path d="M8 1.7v1.5M8 12.8v1.5M1.7 8h1.5M12.8 8h1.5M3.6 3.6l1 1M11.4 11.4l1 1M12.4 3.6l-1 1M4.6 11.4l-1 1"/>',
   moon: '<path d="M12.8 9.6A5.3 5.3 0 0 1 6.4 3.2a5.3 5.3 0 1 0 6.4 6.4z"/>',
+  compare:
+    '<rect x="2.3" y="3.3" width="4.7" height="9.4" rx="1.2"/><rect x="9" y="3.3" width="4.7" height="9.4" rx="1.2"/>',
+  swap:
+    '<path d="M3.2 5.9h8.1"/><path d="M8.9 3.4l2.6 2.5-2.6 2.5"/><path d="M12.8 10.1H4.7"/><path d="M7.1 7.6L4.5 10.1l2.6 2.5"/>',
 };
 
 function icon(name, size = 14) {
@@ -4352,12 +4652,14 @@ app.registerExtension({
       const tabPrompts = el("button", "lgb-tab", "提示词");
       const tabReverse = el("button", "lgb-tab", "反推");
       const tabConvert = el("button", "lgb-tab", "转换");
+      const tabCompare = el("button", "lgb-tab", "图像对比");
       setTitle(tabGallery, "浏览缩略图");
       setTitle(tabFavorites, "收藏的图片");
       setTitle(tabPrompts, "查看当前列表的提示词");
       setTitle(tabReverse, "把选中的图片反推成提示词，可写回同名 .txt");
       setTitle(tabConvert, "批量转格式 / 压体积 / 缩放");
-      rowTabs.append(tabGallery, tabFavorites, tabPrompts, tabReverse, tabConvert);
+      setTitle(tabCompare, "把选中的两张图放到对比页：滑块 / 并排 / 差异");
+      rowTabs.append(tabGallery, tabFavorites, tabPrompts, tabReverse, tabConvert, tabCompare);
 
       const sizeWrap = el("label", "lgb-size");
       const sizeInput = document.createElement("input");
@@ -4522,6 +4824,9 @@ app.registerExtension({
       /* 转换页：批量转格式 / 压体积 / 缩放（内容在 mountConvertPage 里建） */
       const pageConvert = el("div", "lgb-page off");
 
+      /* 图像对比页：两张图叠/并排，滑块擦除、同步缩放平移（内容在 mountComparePage 里建） */
+      const pageCompare = el("div", "lgb-page off");
+
       pageGallery.append(filters, gridScroll);
 
       /* 底栏：选择信息 + 批量操作（批量删除已挪到路径栏、回收站左边） */
@@ -4586,6 +4891,7 @@ app.registerExtension({
         pagePrompts,
         pageReverse,
         pageConvert,
+        pageCompare,
         rowFoot
       );
 
@@ -5710,6 +6016,13 @@ app.registerExtension({
         if (selCount) setTitleT(tabConvert, "转换压缩：已选 {n} 张", { n: selCount });
         else if (convTotal) setTitleT(tabConvert, "转换压缩：当前列表 {n} 张", { n: convTotal });
         else setTitle(tabConvert, "转换压缩：当前列表没有图片");
+
+        // 对比页：选满两张就能直接进
+        tabCompare.replaceChildren(tspan("图像对比"));
+        if (selCount >= 2)
+          setTitleT(tabCompare, "图像对比：已选 {n} 张，点这里对比前两张", { n: selCount });
+        else if (selCount === 1) setTitle(tabCompare, "图像对比：先在图库选两张图");
+        else setTitle(tabCompare, "图像对比：选中两张图片后右键可以直接对比");
       }
 
       /* 切语言：刷静态文案 + 让各处的渲染函数按新语言重画 */
@@ -5727,6 +6040,9 @@ app.registerExtension({
         updateTabCounts();
         paintSelection();
         syncConvertPage();
+        // 对比页的下拉/提示是渲染时生成的，切语言要重刷一遍
+        cmp.ui?.refreshOptions();
+        cmp.ui?.syncAll();
         renderChips();
         // 「今天 / 昨天」这类组标题是渲染时生成的，切语言要重画一遍
         state.tl = null;
@@ -5761,7 +6077,9 @@ app.registerExtension({
       }
 
       function switchTab(name) {
-        activeTab = ["favorites", "prompts", "reverse", "convert"].includes(name) ? name : "gallery";
+        activeTab = ["favorites", "prompts", "reverse", "convert", "compare"].includes(name)
+          ? name
+          : "gallery";
         // filenames 跟页签走，切页就要把新的口径写进 selection_data
         state.tab = activeTab;
         const isGallery = activeTab === "gallery";
@@ -5769,17 +6087,20 @@ app.registerExtension({
         const isPrompts = activeTab === "prompts";
         const isReverse = activeTab === "reverse";
         const isConvert = activeTab === "convert";
+        const isCompare = activeTab === "compare";
         tabGallery.classList.toggle("on", isGallery);
         tabFavorites.classList.toggle("on", isFav);
         tabPrompts.classList.toggle("on", isPrompts);
         tabReverse.classList.toggle("on", isReverse);
         tabConvert.classList.toggle("on", isConvert);
+        tabCompare.classList.toggle("on", isCompare);
         // 收藏页复用同一个缩略图网格，别把它一起关掉
         const isGridView = isGallery || isFav;
         pageGallery.classList.toggle("off", !isGridView);
         pagePrompts.classList.toggle("off", !isPrompts);
         pageReverse.classList.toggle("off", !isReverse);
         pageConvert.classList.toggle("off", !isConvert);
+        pageCompare.classList.toggle("off", !isCompare);
         // 缩略图密度改到设置里了，这里不再按页签显隐
         // 路径栏（浏览 / 设置 / 刷新 / 回收站）只在能看图的两个页签出现；
         // 提示词页把整块批量删除挪进提示词栏，那里也有一颗「删除选中」
@@ -5806,6 +6127,10 @@ app.registerExtension({
         if (isConvert) {
           // 转换页内容只建一次，之后随选中数同步按钮
           ensureConvertPage();
+          return;
+        }
+        if (isCompare) {
+          ensureComparePage();
           return;
         }
         if (isFav) {
@@ -8735,6 +9060,440 @@ app.registerExtension({
         });
       }
 
+      /* ---------------- 图像对比（两张图：滑块擦除 / 并排 / 差异） ----------------
+         思路跟 Goohaitools 的 Image Compare 一致：两张图叠在同一个舞台上，
+         用一条可拖的分割线擦除对比；缩放和平移对两侧同步生效，看细节不会错位。 */
+      const cmp = {
+        built: false,
+        a: "",
+        b: "",
+        mode: "wipe", // wipe | side | diff
+        dir: "h", // h = 竖线（左右） / v = 横线（上下）
+        split: 0.5,
+        zoom: 1,
+        px: 0,
+        py: 0,
+        drag: null,
+        selSig: "",
+        ui: null,
+      };
+
+      const CMP_MODES = [
+        ["wipe", "滑块", "拖动中间那条线：线左边看 A，右边看 B"],
+        ["side", "并排", "左右各一半，缩放平移两边同步"],
+        ["diff", "差异", "两张图叠加做差：重合的地方发黑，不一样的地方才亮"],
+      ];
+
+      function cmpItem(path) {
+        return state.items.find((it) => it.path === path) || null;
+      }
+
+      function cmpName(path) {
+        return cmpItem(path)?.name || shortName(path);
+      }
+
+      function ensureComparePage() {
+        if (!cmp.built) mountComparePage();
+        // 直接点页签进来：选中的两张先用上。
+        // 只按「选中范围变了没」判断，所以进页面后手动换过的图，来回切页签不会被冲掉。
+        const picked = [...state.selected.entries()]
+          .sort((x, y) => x[1] - y[1])
+          .map(([path]) => path);
+        if (picked.length >= 2) {
+          const sig = picked.slice(0, 2).join("\n");
+          if (sig !== cmp.selSig) {
+            cmpSetPair(picked.slice(0, 2));
+            return;
+          }
+        }
+        cmp.ui?.refreshOptions();
+        cmp.ui?.syncAll();
+      }
+
+      // 右键菜单 / 页签进来时指定要比的两张
+      function cmpSetPair(paths) {
+        if (!cmp.built) mountComparePage();
+        cmp.a = paths[0] || "";
+        cmp.b = paths[1] || "";
+        cmp.selSig = [cmp.a, cmp.b].join("\n");
+        cmp.zoom = 1;
+        cmp.px = 0;
+        cmp.py = 0;
+        cmp.ui?.refreshOptions();
+        cmp.ui?.applyPair();
+      }
+
+      function mountComparePage() {
+        if (cmp.built) return;
+        cmp.built = true;
+        pageCompare.replaceChildren();
+
+        const box = el("div", "lgb-cmp");
+
+        /* —— 头：标题 + 当前两张 + 操作 —— */
+        const headEl = el("div", "lgb-cmp-head");
+        const hintEl = el("div", "hint", "");
+        const btnFromSel = el("button", "lgb-btn sm", "取选中的两张");
+        setTitle(btnFromSel, "把当前选中的前两张放到 A / B");
+        btnFromSel.addEventListener("click", () => {
+          const picked = [...state.selected.entries()]
+            .sort((x, y) => x[1] - y[1])
+            .map(([path]) => path);
+          if (picked.length < 2) {
+            setStatus("先在图库选两张图（多选模式），再点这里", { error: true });
+            return;
+          }
+          cmpSetPair(picked.slice(0, 2));
+        });
+        const btnSwap = el("button", "lgb-btn sm");
+        btnSwap.append(icon("swap", 13), tspan("交换 A/B"));
+        setTitle(btnSwap, "把 A 和 B 对调，方便看两边的差别");
+        btnSwap.addEventListener("click", () => {
+          const { a, b } = cmp;
+          cmp.a = b;
+          cmp.b = a;
+          cmp.ui?.syncAll();
+        });
+        headEl.append(el("h3", "", "图像对比"), hintEl, btnFromSel, btnSwap);
+
+        /* —— 工具条：A/B 下拉 + 模式 + 分割方向 + 缩放 —— */
+        const bar = el("div", "lgb-cmp-bar");
+
+        const selA = document.createElement("select");
+        const selB = document.createElement("select");
+        const pickA = el("label", "lgb-cmp-pick");
+        pickA.append(el("span", "tag", "A"), selA);
+        const pickB = el("label", "lgb-cmp-pick");
+        pickB.append(el("span", "tag", "B"), selB);
+        selA.addEventListener("change", () => {
+          cmp.a = selA.value;
+          cmp.ui?.applyPair();
+        });
+        selB.addEventListener("change", () => {
+          cmp.b = selB.value;
+          cmp.ui?.applyPair();
+        });
+
+        const modeSeg = el("div", "lgb-seg");
+        const modeBtns = new Map();
+        CMP_MODES.forEach(([key, label, hint]) => {
+          const btn = el("button", "lgb-seg-btn", label);
+          setTitle(btn, hint);
+          btn.addEventListener("click", () => {
+            cmp.mode = key;
+            cmpSyncAll();
+          });
+          modeBtns.set(key, btn);
+          modeSeg.append(btn);
+        });
+
+        const dirSeg = el("div", "lgb-seg");
+        const dirBtns = new Map();
+        [
+          ["h", "左右", "竖着一条线：左边 A、右边 B（鼠标左右拖）"],
+          ["v", "上下", "横着一条线：上边 A、下边 B（鼠标上下拖）"],
+        ].forEach(([key, label, hint]) => {
+          const btn = el("button", "lgb-seg-btn", label);
+          setTitle(btn, hint);
+          btn.addEventListener("click", () => {
+            cmp.dir = key;
+            cmpSyncAll();
+          });
+          dirBtns.set(key, btn);
+          dirSeg.append(btn);
+        });
+
+        const btnFit = el("button", "lgb-btn ic sm");
+        btnFit.append(icon("fit", 13));
+        setTitle(btnFit, "适应窗口（双击画面也可以）");
+        const btnOne = el("button", "lgb-btn sm", "1:1");
+        setTitle(btnOne, "按图片原始像素显示");
+        const btnOut = el("button", "lgb-btn ic sm");
+        btnOut.append(icon("zoomOut", 13));
+        setTitle(btnOut, "缩小");
+        const btnIn = el("button", "lgb-btn ic sm");
+        btnIn.append(icon("zoomIn", 13));
+        setTitle(btnIn, "放大");
+
+        bar.append(pickA, pickB, modeSeg, dirSeg, el("div", "lgb-head-spacer"), btnFit, btnOne, btnOut, btnIn);
+
+        /* —— 舞台 —— */
+        const stage = el("div", "lgb-cmp-stage");
+        const mkLayer = (side) => {
+          const layer = el("div", `lgb-cmp-layer ${side}`);
+          const board = el("div", "lgb-cmp-board");
+          const img = document.createElement("img");
+          img.alt = "";
+          img.decoding = "async";
+          img.draggable = false;
+          img.addEventListener("error", () => {
+            if (img.getAttribute("src")) setStatus("这张图读取失败，换一张试试", { error: true });
+          });
+          board.append(img);
+          layer.append(board);
+          return { layer, board, img };
+        };
+        const A = mkLayer("a");
+        const B = mkLayer("b");
+
+        const tagA = el("div", "lgb-cmp-tag a");
+        const tagB = el("div", "lgb-cmp-tag b");
+        const split = el("div", "lgb-cmp-split");
+        const knob = el("div", "knob");
+        // 两个小三角朝外，横着是 ◀ ▶，切成上下时整体转 90°
+        knob.innerHTML =
+          '<svg class="arw" viewBox="0 0 22 12" width="16" height="9" fill="currentColor" aria-hidden="true">' +
+          '<path d="M4.6 6 9 1.6v8.8z"/><path d="M17.4 6 13 10.4V1.6z"/></svg>';
+        split.append(knob);
+        const emptyEl = el("div", "lgb-cmp-empty", "");
+        stage.append(A.layer, B.layer, tagA, tagB, split, emptyEl);
+
+        /* —— 底：尺寸信息 + 缩放比例 + 操作提示 —— */
+        const foot = el("div", "lgb-cmp-foot");
+        const metaEl = el("div", "meta", "");
+        const zoomEl = el("span", "zoomv", "100%");
+        const tipEl = el("span", "", "滚轮缩放 · 拖动平移 · 双击复位");
+        foot.append(metaEl, el("span", "sp"), zoomEl, tipEl);
+
+        box.append(headEl, bar, stage, foot);
+        pageCompare.append(box);
+
+        /* -------- 渲染 -------- */
+        function refreshOptions() {
+          const fill = (sel, current) => {
+            const items = visibleItems();
+            const list = items.length ? items : state.items;
+            sel.replaceChildren();
+            // 当前这张不在列表里（比如从收藏页过来）也要能显示出来
+            if (current && !list.some((it) => it.path === current)) {
+              sel.append(mkOption(current, cmpName(current)));
+            }
+            list.forEach((it) => sel.append(mkOption(it.path, it.name)));
+            sel.value = current || "";
+          };
+          fill(selA, cmp.a);
+          fill(selB, cmp.b);
+        }
+
+        function applyPair() {
+          const put = (img, path) => {
+            if (!path) {
+              img.removeAttribute("src");
+              return;
+            }
+            const url = buildUrl("/local_gallery/raw", { path });
+            if (img.getAttribute("src") !== url) img.src = url;
+          };
+          put(A.img, cmp.a);
+          put(B.img, cmp.b);
+          syncAll();
+        }
+
+        function applyTransform() {
+          const t = `translate(${cmp.px}px, ${cmp.py}px) scale(${cmp.zoom})`;
+          A.board.style.transform = t;
+          B.board.style.transform = t;
+          zoomEl.textContent = `${Math.round(cmp.zoom * 100)}%`;
+        }
+
+        function syncSplit() {
+          const pct = `${(cmp.split * 100).toFixed(3)}%`;
+          if (cmp.dir === "v") {
+            split.style.left = "";
+            split.style.top = pct;
+          } else {
+            split.style.left = pct;
+            split.style.top = "";
+          }
+          knob.firstElementChild.style.transform = cmp.dir === "v" ? "rotate(90deg)" : "";
+          if (cmp.mode === "wipe") {
+            B.layer.style.clipPath =
+              cmp.dir === "v"
+                ? `inset(${pct} 0 0 0)`
+                : `inset(0 0 0 ${pct})`;
+          } else {
+            B.layer.style.clipPath = "";
+          }
+        }
+
+        function syncTags() {
+          const fill = (node, letter, path) => {
+            node.replaceChildren(
+              el("b", "", letter),
+              document.createTextNode(path ? cmpName(path) : t("选一张图"))
+            );
+            node.title = path || "";
+          };
+          fill(tagA, "A", cmp.a);
+          fill(tagB, "B", cmp.b);
+          tagA.style.display = cmp.a ? "" : "none";
+          tagB.style.display = cmp.b ? "" : "none";
+        }
+
+        function infoOf(path) {
+          const it = cmpItem(path);
+          if (!it) return "";
+          const bits = [];
+          if (it.width && it.height) bits.push(`${it.width}×${it.height}`);
+          if (it.size) bits.push(fmtSize(it.size));
+          return bits.join(" · ");
+        }
+
+        function syncMeta() {
+          const parts = [];
+          if (cmp.a) parts.push(`A  ${cmpName(cmp.a)}${infoOf(cmp.a) ? " · " + infoOf(cmp.a) : ""}`);
+          if (cmp.b) parts.push(`B  ${cmpName(cmp.b)}${infoOf(cmp.b) ? " · " + infoOf(cmp.b) : ""}`);
+          metaEl.textContent = parts.join("　|　");
+          metaEl.title = parts.join("\n");
+        }
+
+        function syncHint() {
+          if (!cmp.a || !cmp.b) {
+            hintEl.textContent = t("A/B 至少各有一张图才能对比");
+            return;
+          }
+          hintEl.textContent = `${cmpName(cmp.a)}  ⟷  ${cmpName(cmp.b)}`;
+        }
+
+        function syncEmpty() {
+          const missing = !cmp.a || !cmp.b;
+          emptyEl.classList.toggle("off", !missing);
+          if (missing) {
+            emptyEl.textContent = t(
+              "在图库选中两张图片，右键 →「图像对比」就能直接对比"
+            );
+          }
+        }
+
+        function syncAll() {
+          if (selA.value !== (cmp.a || "")) selA.value = cmp.a || "";
+          if (selB.value !== (cmp.b || "")) selB.value = cmp.b || "";
+          modeBtns.forEach((btn, key) => btn.classList.toggle("on", key === cmp.mode));
+          dirBtns.forEach((btn, key) => btn.classList.toggle("on", key === cmp.dir));
+          dirSeg.style.display = cmp.mode === "wipe" ? "" : "none";
+          stage.dataset.mode = cmp.mode;
+          stage.dataset.dir = cmp.dir;
+          syncSplit();
+          syncTags();
+          syncMeta();
+          syncHint();
+          syncEmpty();
+          applyTransform();
+        }
+
+        cmp.ui = { refreshOptions, applyPair, syncAll };
+
+        /* -------- 缩放 / 平移 / 分割线 -------- */
+        function clampZoom(v) {
+          return Math.min(16, Math.max(0.2, v));
+        }
+
+        function resetZoom() {
+          cmp.zoom = 1;
+          cmp.px = 0;
+          cmp.py = 0;
+          applyTransform();
+        }
+
+        function zoomBy(factor) {
+          const next = clampZoom(cmp.zoom * factor);
+          const k = next / cmp.zoom;
+          // 以舞台中心为基准缩放
+          cmp.px *= k;
+          cmp.py *= k;
+          cmp.zoom = next;
+          applyTransform();
+        }
+
+        btnFit.addEventListener("click", resetZoom);
+        btnIn.addEventListener("click", () => zoomBy(1.25));
+        btnOut.addEventListener("click", () => zoomBy(0.8));
+        btnOne.addEventListener("click", () => {
+          const img = A.img.naturalWidth ? A.img : B.img;
+          const nw = img.naturalWidth;
+          const nh = img.naturalHeight;
+          const rect = stage.getBoundingClientRect();
+          if (!nw || !nh || !rect.width || !rect.height) return;
+          const fit = Math.min(rect.width / nw, rect.height / nh) || 1;
+          cmp.zoom = clampZoom(1 / fit);
+          cmp.px = 0;
+          cmp.py = 0;
+          applyTransform();
+        });
+
+        stage.addEventListener(
+          "wheel",
+          (evt) => {
+            if (!cmp.a || !cmp.b) return;
+            evt.preventDefault();
+            const rect = stage.getBoundingClientRect();
+            const cx = evt.clientX - rect.left - rect.width / 2;
+            const cy = evt.clientY - rect.top - rect.height / 2;
+            const next = clampZoom(cmp.zoom * Math.exp(-evt.deltaY * 0.0016));
+            const k = next / cmp.zoom;
+            cmp.px = cx - (cx - cmp.px) * k;
+            cmp.py = cy - (cy - cmp.py) * k;
+            cmp.zoom = next;
+            applyTransform();
+          },
+          { passive: false }
+        );
+
+        function moveSplitTo(evt) {
+          const rect = stage.getBoundingClientRect();
+          if (!rect.width || !rect.height) return;
+          const ratio =
+            cmp.dir === "v"
+              ? (evt.clientY - rect.top) / rect.height
+              : (evt.clientX - rect.left) / rect.width;
+          cmp.split = Math.min(0.985, Math.max(0.015, ratio));
+          syncSplit();
+        }
+
+        stage.addEventListener("pointerdown", (evt) => {
+          if (evt.button !== 0 || !cmp.a || !cmp.b) return;
+          if (evt.target.closest?.(".lgb-cmp-split")) {
+            cmp.drag = { kind: "split" };
+            stage.setPointerCapture?.(evt.pointerId);
+            moveSplitTo(evt);
+            evt.preventDefault();
+            return;
+          }
+          cmp.drag = { kind: "pan", x: evt.clientX, y: evt.clientY, px: cmp.px, py: cmp.py };
+          stage.classList.add("panning");
+          stage.setPointerCapture?.(evt.pointerId);
+        });
+
+        stage.addEventListener("pointermove", (evt) => {
+          if (!cmp.drag) return;
+          if (cmp.drag.kind === "split") {
+            moveSplitTo(evt);
+            return;
+          }
+          cmp.px = cmp.drag.px + (evt.clientX - cmp.drag.x);
+          cmp.py = cmp.drag.py + (evt.clientY - cmp.drag.y);
+          applyTransform();
+        });
+
+        const endDrag = () => {
+          if (!cmp.drag) return;
+          cmp.drag = null;
+          stage.classList.remove("panning");
+        };
+        stage.addEventListener("pointerup", endDrag);
+        stage.addEventListener("pointercancel", endDrag);
+        stage.addEventListener("lostpointercapture", endDrag);
+        stage.addEventListener("dblclick", resetZoom);
+
+        /* -------- 首帧 -------- */
+        refreshOptions();
+        applyPair();
+      }
+
+      function cmpSyncAll() {
+        cmp.ui?.syncAll();
+      }
+
       /* ---------------- 搜索（名称 / 提示词 / 全部） ---------------- */
       const SEARCH_MODES = [
         { key: "name", label: "名称", hint: "按文件名 / 路径过滤", placeholder: "按文件名过滤，空格分隔多个关键词" },
@@ -9014,6 +9773,13 @@ app.registerExtension({
           switchTab("reverse"), { iconName: "text" });
         addItem("转换", "跳到转换压缩页：批量转格式 / 压体积 / 缩放", () =>
           switchTab("convert"), { iconName: "convert" });
+        // 只有正好两张时才给「图像对比」：多了少了都不好说要比哪两张
+        if (paths.length === 2) {
+          addItem("图像对比", "把选中的两张图放到对比页：滑块 / 并排 / 差异", () => {
+            switchTab("compare");
+            cmpSetPair(paths);
+          }, { iconName: "compare" });
+        }
 
         // 二级菜单：删除（图片 + 提示词 / 只删提示词 / 只删图片）
         const pad = 8;
@@ -10553,6 +11319,7 @@ app.registerExtension({
       tabFavorites.addEventListener("click", () => switchTab("favorites"));
       tabReverse.addEventListener("click", () => switchTab("reverse"));
       tabConvert.addEventListener("click", () => switchTab("convert"));
+      tabCompare.addEventListener("click", () => switchTab("compare"));
       tabPrompts.addEventListener("click", () => switchTab("prompts"));
       // 提示词页内的两档切换
       subPrompts.addEventListener("click", () => setPromptMode("prompts"));

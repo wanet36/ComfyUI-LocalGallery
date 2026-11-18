@@ -56,11 +56,22 @@ Five bands, top to bottom:
 
 | Area | What's there |
 |---|---|
-| **Tab bar** | `Gallery / Favorites / Prompts / Caption / Convert` (counts live in the tooltip, not on the buttons) |
+| **Tab bar** | Six tabs: `Gallery / Favorites / Prompts / Caption / Convert / Compare` (counts live in the tooltip, not on the buttons) |
 | **Path bar** (Gallery / Favorites) | Settings (holds the whole *Browse local paths* block: Choose folder / in-panel browser), ⟳ rescan, the batch group (`Select all` / `Clear selection`; Favorites adds `Unfavorite (N)`), Trash |
 | **Filter row** | **Grid / list slider** on the left, then **Group by day**, sort button, search-scope button, search box, `hits / total` (Include subfolders / Only with prompt live in Settings) |
 | **Content** | Waterfall grid (original aspect ratio, never cropped square); auto-loads the next page when you scroll (80 per page). A **list mode** is one click away: one image per row with thumbnail, name, resolution/size and prompt tags |
 | **Footer** | **Single / multi-select slider** (click either side and the knob slides over), selection count, status text |
+
+### Image compare
+
+The **`Compare`** tab at the far right (or select two images in Gallery → right-click → `Compare`) stacks two images on one stage, like Goohaitools' Image Compare node.
+
+- **Wipe** (default): one divider, A on the left, B on the right — drag it, or switch to top/bottom
+- **Side by side**: each image gets half the stage; zoom and pan stay in sync
+- **Difference**: the two are subtracted, identical areas go black and real changes light up
+- **Zoom / pan**: wheel zooms around the cursor (20%–1600%), drag pans; `Fit` or double-click resets, `1:1` shows actual pixels. Both sides always share the same transform
+- **Changing images**: pick from the A / B dropdowns, `Use the 2 selected`, or `Swap A/B`
+- The footer shows both file names, resolutions and sizes so you can tell versions apart
 
 ### Right-click menu
 
@@ -68,6 +79,7 @@ Right-click a thumbnail (or a list row): `Copy prompts` / `Add to folder` / `Cap
 
 - Right-clicking an unselected image selects just it first; if it's already inside the selection, the action applies to the whole selection
 - `Delete…` is a second-level menu that opens beside the first one (also on click) and offers the same three options as before: both / prompt only / image only
+- With exactly **two** images selected, an extra `Compare` item appears and jumps straight to the compare page
 - These five actions used to sit in the footer and the path bar; the panel is now cleaner. The Prompts tab keeps its own **Delete selected (N)** button
 
 ### Adding paths
