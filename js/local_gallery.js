@@ -5592,7 +5592,13 @@ app.registerExtension({
         const hostEl = dragSel.kind === "prompt" ? pagePrompts : canvas;
         const host = hostEl.getBoundingClientRect();
         const scale = elementScale(hostEl);
-        dragSel.hostRect = host;
+        // 存成普通对象而不是 DOMRect：滚动时要就地改 top（DOMRect 是只读的）
+        dragSel.hostRect = {
+          left: host.left,
+          top: host.top,
+          width: host.width,
+          height: host.height,
+        };
         dragSel.scale = scale;
         const scope = dragSel.kind === "prompt" ? activePromptScroll() : canvas;
         const sel = dragSel.kind === "prompt" ? ".lgb-prompt" : ".lgb-item, .lgb-lrow";
@@ -5731,8 +5737,10 @@ app.registerExtension({
             scope.scrollTop = before + dy;
             const delta = scope.scrollTop - before;
             if (delta) {
-              // 内容整体上移，缓存里的 top 同步减掉，否则命中会越来越偏
+              // 滚动让内容整体上移：候选的 top 和宿主的 top 都要跟着减，
+              // 否则框会停在原地（鼠标在走、框不动），越滚偏得越多
               if (dragSel.cands) dragSel.cands.forEach((c) => { c.t -= delta; });
+              if (dragSel.hostRect) dragSel.hostRect.top -= delta;
               paintMarquee();
             }
           }
