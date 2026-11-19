@@ -120,6 +120,7 @@ Paths can be folders, single images, or a mix. The same file reached through sev
   - Above 8 per row (column width < 96px) the action group drops the copy button so it never crowds the thumbnail — use the right-click menu or the Prompts tab instead
 - `TXT` badge: green = prompt file exists, grey `—` = none
 - The search box filters by file name / relative path; separate keywords with spaces (all must match)
+- Scrolling inside the panel only scrolls the current list (thumbnails, prompts, convert settings, settings — same everywhere) and **never** zooms the ComfyUI canvas; move the pointer outside the panel to zoom
 
 ---
 
