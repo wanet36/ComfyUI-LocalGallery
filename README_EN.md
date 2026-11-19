@@ -121,6 +121,7 @@ Paths can be folders, single images, or a mix. The same file reached through sev
 - `TXT` badge: green = prompt file exists, grey `—` = none
 - The search box filters by file name / relative path; separate keywords with spaces (all must match)
 - Scrolling inside the panel only scrolls the current list (thumbnails, prompts, convert settings, settings — same everywhere) and **never** zooms the ComfyUI canvas; move the pointer outside the panel to zoom
+- **Gallery and Favorites keep separate selections** — switching back and forth never mixes them. The node only outputs what's selected on the tab you're **currently on**: Prompts outputs prompts only (no images), Gallery/Favorites output images plus their prompts
 
 ---
 
