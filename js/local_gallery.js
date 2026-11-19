@@ -2226,6 +2226,58 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   gap: 5px;
   min-width: 0;
 }
+/* 模式相关的参数组：WD14/TIPO 与 Qwen 两组互斥显示 */
+.lgb-rev-group {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}
+.lgb-rev-group[hidden] {
+  display: none;
+}
+/* Qwen 参数多，单独占一整行并排在最后 */
+.lgb-rev-group[data-wide="1"] {
+  flex: 1 1 100%;
+  order: 10;
+}
+.lgb-rev-prompt {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--lg-elev);
+  border-bottom: 1px solid var(--lg-line);
+  flex: 0 0 auto;
+}
+.lgb-rev-prompt[hidden] {
+  display: none;
+}
+.lgb-rev-prompt > .lb {
+  color: var(--lg-text-3);
+  font-size: 11px;
+  padding-top: 7px;
+  white-space: nowrap;
+}
+.lgb-rev-prompt textarea {
+  flex: 1 1 auto;
+  min-height: 44px;
+  max-height: 140px;
+  resize: vertical;
+  padding: 6px 8px;
+  background: var(--lg-sunken);
+  color: var(--lg-text);
+  border: 1px solid var(--lg-line);
+  border-radius: var(--lg-r);
+  font-family: inherit;
+  font-size: 11.5px;
+  line-height: 1.5;
+  outline: none;
+}
+.lgb-rev-prompt textarea:focus {
+  border-color: var(--lg-accent);
+  box-shadow: 0 0 0 3px var(--lg-accent-soft);
+}
 .lgb-rev-field > .lb {
   color: var(--lg-text-3);
   font-size: 11px;
@@ -3566,6 +3618,16 @@ const I18N_EN = {
   "TIPO 扩写用的 gguf 模型": "GGUF model used by TIPO",
   "TIPO 不可用：{tip}": "TIPO unavailable: {tip}",
   "TIPO 不可用，只能用 WD14 标签": "TIPO unavailable — WD14 tags only",
+  "Qwen3.5 反推": "Qwen3.5 captioning",
+  "Qwen 模型": "Qwen model",
+  "最大边长": "Max side",
+  "最大 token": "Max tokens",
+  "温度": "Temperature",
+  "Qwen 视觉模型（models/LLM）": "Qwen vision model (models/LLM)",
+  "Qwen 不可用：{tip}": "Qwen unavailable: {tip}",
+  "没有可用的反推模型：需要 WD14 的 .onnx/.csv，或 models/LLM 里的 Qwen gguf": "No captioning model: need WD14 .onnx/.csv, or a Qwen GGUF in models/LLM",
+  "没有 WD14 模型，只能用 Qwen3.5 反推": "No WD14 model — Qwen3.5 captioning only",
+  "TIPO / Qwen 都不可用，只能用 WD14 标签": "TIPO and Qwen unavailable — WD14 tags only",
   "反推不可用": "Captioning unavailable",
   "没有可用的打标模型：需要 ComfyUI-WD14-Tagger 的 models 目录里有 .onnx + .csv": "No tagging model: put .onnx + .csv into ComfyUI-WD14-Tagger/models",
   "还没有选中图片 —— 回图库点几张，再回到这里": "No images selected — pick some in Gallery first",
@@ -7407,7 +7469,7 @@ app.registerExtension({
         await reload();
       }
 
-      /* ---------------- 图片反推（WD14 + 可选 TIPO） ---------------- */
+      /* ---------------- 图片反推（WD14 + 可选 TIPO / Qwen3.5-VL） ---------------- */
       const REV_KEY = "localGalleryBrowser.caption";
       const REV_DEFAULTS = {
         model: "",
@@ -7418,6 +7480,13 @@ app.registerExtension({
         prefix: "",
         writeMode: "skip",
         underscore: true,
+        // Qwen3.5-VL
+        qwenModel: "",
+        qwenMmproj: "",
+        qwenPrompt: "",
+        qwenMaxSide: 1024,
+        qwenMaxTokens: 1024,
+        qwenTemp: 0.7,
       };
 
       function loadRevSettings() {
@@ -7534,6 +7603,7 @@ app.registerExtension({
           ["tags", "仅标签（快）"],
           ["tipo", "TIPO 扩写标签"],
           ["tipo_nl", "TIPO 标签 + 描述"],
+          ["qwen", "Qwen3.5 反推"],
         ].forEach(([value, text]) => modeSel.append(mkOption(value, text)));
         modeSel.value = rev.settings.mode || "tags";
 
@@ -7545,16 +7615,55 @@ app.registerExtension({
         prefixInput.value = rev.settings.prefix || "";
         const underscoreChk = mkCheck("下划线换空格", rev.settings.underscore !== false);
 
-        const optsRow = el("div", "lgb-rev-opts");
-        optsRow.append(
+        // Qwen3.5-VL 参数（只在「Qwen3.5 反推」模式下显示）
+        const qwenModelSel = document.createElement("select");
+        const qwenMmprojSel = document.createElement("select");
+        const qwenSideInput = numberInput(128, 4096, 64, rev.settings.qwenMaxSide || 1024);
+        const qwenTokInput = numberInput(20, 8192, 64, rev.settings.qwenMaxTokens || 1024);
+        const qwenTempInput = numberInput(0, 2, 0.05, rev.settings.qwenTemp ?? 0.7);
+        const qwenPromptInput = document.createElement("textarea");
+        qwenPromptInput.spellcheck = false;
+        qwenPromptInput.rows = 2;
+        setPh(qwenPromptInput, "如：根据图像生成中文提示词，内容详尽细致，仅输出最终提示词");
+        qwenPromptInput.value = rev.settings.qwenPrompt || "";
+
+        const wd14Group = el("div", "lgb-rev-group");
+        wd14Group.append(
           field("模型", modelSel),
           field("阈值", thrInput),
           field("角色阈值", charInput),
+          field("TIPO 模型", tipoSel)
+        );
+        const qwenGroup = el("div", "lgb-rev-group");
+        qwenGroup.dataset.wide = "1";
+        // 两个下拉占第一行、三个数值占第二行，避免温度被挤成孤行
+        const qwenModelField = field("Qwen 模型", qwenModelSel);
+        const qwenProjField = field("mmproj", qwenMmprojSel);
+        qwenModelField.style.flex = "1 1 47%";
+        qwenProjField.style.flex = "1 1 47%";
+        qwenModelSel.style.flex = "1 1 auto";
+        qwenMmprojSel.style.flex = "1 1 auto";
+        qwenModelSel.style.minWidth = "0";
+        qwenMmprojSel.style.minWidth = "0";
+        qwenGroup.append(
+          qwenModelField,
+          qwenProjField,
+          field("最大边长", qwenSideInput),
+          field("最大 token", qwenTokInput),
+          field("温度", qwenTempInput)
+        );
+
+        const optsRow = el("div", "lgb-rev-opts");
+        optsRow.append(
           field("输出", modeSel),
-          field("TIPO 模型", tipoSel),
+          wd14Group,
+          qwenGroup,
           field("前缀", prefixInput),
           underscoreChk.label
         );
+
+        const qwenPromptRow = el("div", "lgb-rev-prompt");
+        qwenPromptRow.append(el("span", "lb", "提示词"), qwenPromptInput);
 
         const bar = el("div", "lgb-rev-bar");
         const btnStart = el("button", "lgb-btn primary", "开始反推");
@@ -7583,7 +7692,7 @@ app.registerExtension({
         const btnWrite = el("button", "lgb-btn primary", "写入 .txt");
         foot.append(field("写入", writeSel), msg, btnCopyAll, btnWrite);
 
-        box.append(headEl, optsRow, bar, list, foot);
+        box.append(headEl, optsRow, qwenPromptRow, bar, list, foot);
         pageReverse.append(box);
 
         rev.ui = { list, msg, hint };
@@ -7599,6 +7708,12 @@ app.registerExtension({
             prefix: prefixInput.value.trim(),
             writeMode: writeSel.value,
             underscore: underscoreChk.input.checked,
+            qwenModel: qwenModelSel.value,
+            qwenMmproj: qwenMmprojSel.value,
+            qwenPrompt: qwenPromptInput.value.trim(),
+            qwenMaxSide: Number(qwenSideInput.value) || 1024,
+            qwenMaxTokens: Number(qwenTokInput.value) || 1024,
+            qwenTemp: Number(qwenTempInput.value) || 0.7,
           };
           rev.settings = settings;
           saveRevSettings();
@@ -7612,23 +7727,40 @@ app.registerExtension({
             prefix: settings.prefix,
             mode: settings.mode,
             tipo_model: settings.tipoModel,
+            qwen_model: settings.qwenModel,
+            qwen_mmproj: settings.qwenMmproj,
+            qwen_prompt: settings.qwenPrompt,
+            qwen_max_side: settings.qwenMaxSide,
+            qwen_max_tokens: settings.qwenMaxTokens,
+            qwen_temperature: settings.qwenTemp,
           };
         }
 
-        function syncTipoState() {
-          const available = !!rev.info?.tipo?.available;
-          const wantTipo = modeSel.value !== "tags";
-          tipoSel.disabled = !available || !wantTipo;
+        function syncModeState() {
+          const isQwen = modeSel.value === "qwen";
+          const tipoOk = !!rev.info?.tipo?.available;
+          const qwenOk = !!rev.info?.qwen?.available;
+          wd14Group.hidden = isQwen;
+          qwenGroup.hidden = !isQwen;
+          qwenPromptRow.hidden = !isQwen;
+          tipoSel.disabled = !tipoOk;
           [...modeSel.options].forEach((opt) => {
-            if (opt.value === "tags") return;
-            opt.disabled = !available;
+            if (opt.value === "tipo" || opt.value === "tipo_nl") opt.disabled = !tipoOk;
+            if (opt.value === "qwen") opt.disabled = !qwenOk;
           });
-          if (!available && wantTipo) modeSel.value = "tags";
+          if (!tipoOk && (modeSel.value === "tipo" || modeSel.value === "tipo_nl")) modeSel.value = "tags";
+          if (!qwenOk && modeSel.value === "qwen") modeSel.value = "tags";
           const tip = rev.info?.tipo?.reason || "";
-          if (available) {
+          if (tipoOk) {
             setTitle(tipoSel, "TIPO 扩写用的 gguf 模型");
           } else {
             setTitleT(tipoSel, "TIPO 不可用：{tip}", { tip });
+          }
+          const qtip = rev.info?.qwen?.reason || "";
+          if (qwenOk) {
+            setTitle(qwenModelSel, "Qwen 视觉模型（models/LLM）");
+          } else {
+            setTitleT(qwenModelSel, "Qwen 不可用：{tip}", { tip: qtip });
           }
         }
 
@@ -7657,7 +7789,41 @@ app.registerExtension({
           } else if (info.tipo?.default) {
             tipoSel.value = info.tipo.default;
           }
-          syncTipoState();
+
+          // Qwen3.5-VL：主模型 + mmproj
+          qwenModelSel.replaceChildren();
+          (info.qwen?.models || []).forEach((m) => {
+            const opt = new Option(m, m);
+            opt.title = m;
+            qwenModelSel.append(opt);
+          });
+          const wantQwen = rev.settings.qwenModel;
+          if (wantQwen && [...qwenModelSel.options].some((o) => o.value === wantQwen)) {
+            qwenModelSel.value = wantQwen;
+          } else if (info.qwen?.default_model) {
+            qwenModelSel.value = info.qwen.default_model;
+          }
+
+          qwenMmprojSel.replaceChildren();
+          const noMmproj = new Option("无", "");
+          qwenMmprojSel.append(noMmproj);
+          (info.qwen?.mmproj || []).forEach((m) => {
+            const opt = new Option(m, m);
+            opt.title = m;
+            qwenMmprojSel.append(opt);
+          });
+          const wantProj = rev.settings.qwenMmproj;
+          if (wantProj && [...qwenMmprojSel.options].some((o) => o.value === wantProj)) {
+            qwenMmprojSel.value = wantProj;
+          } else if (info.qwen?.default_mmproj) {
+            qwenMmprojSel.value = info.qwen.default_mmproj;
+          }
+
+          if (!qwenPromptInput.value && info.qwen?.prompt) {
+            qwenPromptInput.value = info.qwen.prompt;
+            qwenPromptInput.placeholder = info.qwen.prompt;
+          }
+          syncModeState();
         }
 
         /* -------- 结果列表 -------- */
@@ -7761,7 +7927,11 @@ app.registerExtension({
           const running = revRunning();
           const percent = rev.total ? Math.min(100, Math.round((rev.done / rev.total) * 100)) : 0;
           progFill.style.width = `${percent}%`;
-          btnStart.disabled = running || !(rev.info?.models || []).length;
+          const hasModel =
+            modeSel.value === "qwen"
+              ? !!(rev.info?.qwen?.models || []).length
+              : !!(rev.info?.models || []).length;
+          btnStart.disabled = running || !hasModel;
           setTpl(btnStart, running ? "反推中…" : rev.results.length ? "重新反推" : "开始反推");
           btnStop.style.display = running ? "" : "none";
           btnWrite.disabled = running || !rev.results.length;
@@ -7831,9 +8001,15 @@ app.registerExtension({
             return;
           }
           const options = readOptions();
-          if (options.mode !== "tags" && !rev.info?.tipo?.available) {
+          if ((options.mode === "tipo" || options.mode === "tipo_nl") && !rev.info?.tipo?.available) {
             options.mode = "tags";
             modeSel.value = "tags";
+            syncModeState();
+          }
+          if (options.mode === "qwen" && !rev.info?.qwen?.available) {
+            options.mode = "tags";
+            modeSel.value = "tags";
+            syncModeState();
           }
           rev.results = [];
           rev.texts.clear();
@@ -7854,7 +8030,13 @@ app.registerExtension({
           rev.current = "";
           setTpl(hint, "{n} 张 · {mode} · 写到同名 .txt", {
             n: paths.length,
-            mode: t(modeSel.value === "tags" ? "WD14 标签" : "TIPO 扩写"),
+            mode: t(
+              modeSel.value === "tags"
+                ? "WD14 标签"
+                : modeSel.value === "qwen"
+                  ? "Qwen3.5 反推"
+                  : "TIPO 扩写"
+            ),
           });
           paintState();
           try {
@@ -7979,7 +8161,12 @@ app.registerExtension({
           }
         });
 
-        modeSel.addEventListener("change", syncTipoState);
+        modeSel.addEventListener("change", () => {
+          syncModeState();
+          rev.settings.mode = modeSel.value;
+          saveRevSettings();
+          paintState();
+        });
         writeSel.addEventListener("change", () => {
           rev.settings.writeMode = writeSel.value;
           saveRevSettings();
@@ -8002,14 +8189,20 @@ app.registerExtension({
         else if (rev.statusText) revStatus.textContent = rev.statusText;
 
         try {
-          if (!rev.info) rev.info = await apiJson("/local_gallery/caption/info");
+          if (!rev.info || !rev.info.qwen) rev.info = await apiJson("/local_gallery/caption/info");
           fillModels();
-          if (!(rev.info.models || []).length) {
-            setTpl(hint, "没有可用的打标模型：需要 ComfyUI-WD14-Tagger 的 models 目录里有 .onnx + .csv");
+          const hasWd14 = !!(rev.info.models || []).length;
+          const hasQwen = !!rev.info.qwen?.available;
+          if (!hasWd14 && !hasQwen) {
+            setTpl(hint, "没有可用的反推模型：需要 WD14 的 .onnx/.csv，或 models/LLM 里的 Qwen gguf");
             revStatus.classList.add("err");
             setTpl(revStatus, "反推不可用");
-          } else if (!rev.info.tipo?.available) {
-            setTpl(revStatus, "TIPO 不可用，只能用 WD14 标签");
+          } else if (!hasWd14) {
+            modeSel.value = "qwen";
+            syncModeState();
+            setTpl(revStatus, "没有 WD14 模型，只能用 Qwen3.5 反推");
+          } else if (!rev.info.tipo?.available && !hasQwen) {
+            setTpl(revStatus, "TIPO / Qwen 都不可用，只能用 WD14 标签");
           }
         } catch (err) {
           setTpl(hint, "读取反推配置失败：{err}", { err: err.message || err });

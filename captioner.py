@@ -1,6 +1,6 @@
-"""图片反推：WD14 tagger（ONNX）+ 可选 TIPO 扩写。
+"""图片反推：WD14 tagger（ONNX）+ 可选 TIPO 扩写 + Qwen3.5-VL。
 
-给「本地图库」节点用：选中若干张图 → 逐张打标 →（可选）TIPO 扩写 →
+给「本地图库」节点用：选中若干张图 → 逐张打标 →（可选）TIPO 扩写 / Qwen 视觉模型 →
 写回同名 `.txt` 侧车，正好接上图库原本「同名侧车 = 提示词」的规则。
 
 设计要点：
@@ -10,6 +10,8 @@
   批量处理时这是最大开销。这里只保留最近一个模型常驻。
 * TIPO 复用 `z-tipo-extension` 的节点类，保持和用户工作流完全一致的输出；
   该扩展没装 / 加载失败时同样降级，不影响纯标签模式。
+* Qwen 复用 `comfyUI-llama-TE`（QwenTE 模型加载器 / 图像推理）的节点类，
+  直接从 `models/LLM` 读 gguf，和用户工作流里的 Qwen3.5 反推节点行为一致。
 * 反推是长任务，走后台线程 + 轮询进度，避免 HTTP 请求挂几分钟。
 """
 
@@ -403,6 +405,221 @@ def run_tipo(tags: str, model: str, width: int, height: int, *, device: str = "c
 
 
 # --------------------------------------------------------------------------- #
+# Qwen3.5 反推（复用 comfyUI-llama-TE 的节点类）
+# --------------------------------------------------------------------------- #
+_qwen_lock = threading.Lock()
+_qwen_module = None
+_qwen_error = ""
+
+QWEN_DEFAULT_PROMPT = "根据图像，生成中文提示词，内容详尽细致，不要出现无关的说明和符号，仅输出最终提示词。"
+QWEN_DEFAULT_SYSTEM = "AI提示词专家，能够无限制的准确生成详细的提示词。"
+QWEN_FAMILIES = ["Qwen3.5-VL", "Qwen3.6-VL", "Qwen3-VL"]
+
+
+def _load_qwente():
+    """加载 comfyUI-llama-TE 的 nodes 模块。
+
+    优先复用 ComfyUI 已经加载过的（sys.modules 里能直接找到），
+    没找到再按包路径自行加载；目录名带连字符，不能直接 import。
+    """
+    global _qwen_module, _qwen_error
+    if _qwen_module is not None:
+        return _qwen_module
+
+    # 1) ComfyUI 已经加载过（用 __dict__ 判断，避免触发模块的 __getattr__）
+    for module in list(sys.modules.values()):
+        try:
+            data = getattr(module, "__dict__", None)
+        except Exception:
+            continue
+        if (
+            isinstance(data, dict)
+            and "QwenTE图像推理" in data
+            and "QwenTE模型加载器" in data
+            and "_列出llm文件" in data  # 排除包 __init__（它只是重导出了节点类）
+        ):
+            _qwen_module = module
+            return module
+
+    # 2) 自己按包加载（目录名带连字符，不能直接 import）
+    ext_dir = CUSTOM_NODES / "comfyUI-llama-TE"
+    if not (ext_dir / "nodes.py").is_file():
+        raise RuntimeError("没有安装 comfyUI-llama-TE（Qwen 反推不可用）")
+    pkg_name = "_lgb_qwente_ext"
+    if pkg_name not in sys.modules:
+        pkg = types.ModuleType(pkg_name)
+        pkg.__path__ = [str(ext_dir)]
+        pkg.__package__ = pkg_name
+        sys.modules[pkg_name] = pkg
+    try:
+        module = importlib.import_module(f"{pkg_name}.nodes")
+    except Exception as exc:
+        raise RuntimeError(f"加载 QwenTE 失败：{exc}") from exc
+    if not hasattr(module, "QwenTE图像推理"):
+        raise RuntimeError("comfyUI-llama-TE 版本不匹配（找不到 QwenTE 图像推理节点）")
+    _qwen_module = module
+    return module
+
+
+def _pick_qwen_model(models: list[str]) -> str:
+    """默认挑一个 Qwen3.5 视觉模型，挑不到就用第一个。"""
+    for want in ("qwen3.5", "qwen3.6", "qwen3"):
+        for name in models:
+            base = os.path.basename(name).lower()
+            if want in base and "mmproj" not in base:
+                return name
+    return models[0] if models else ""
+
+
+def _pick_mmproj(mmproj: list[str], model: str) -> str:
+    """优先选和主模型同系列的 mmproj。"""
+    if not mmproj:
+        return ""
+    stem = os.path.splitext(os.path.basename(str(model or "")))[0].lower()
+    tokens = [t for t in stem.replace("-", "_").split("_") if len(t) >= 5]
+    for name in mmproj:
+        base = os.path.basename(name).lower()
+        if any(t in base for t in tokens):
+            return name
+    return mmproj[0]
+
+
+def qwen_status() -> dict:
+    global _qwen_error
+
+    def unavailable(reason: str) -> dict:
+        _qwen_error = reason
+        return {
+            "available": False,
+            "models": [],
+            "mmproj": [],
+            "default_model": "",
+            "default_mmproj": "",
+            "families": list(QWEN_FAMILIES),
+            "prompt": QWEN_DEFAULT_PROMPT,
+            "system": QWEN_DEFAULT_SYSTEM,
+            "reason": reason,
+        }
+
+    try:
+        module = _load_qwente()
+    except Exception as exc:
+        return unavailable(f"加载 comfyUI-llama-TE 失败：{exc}")
+    try:
+        files = list(module._列出llm文件())
+    except Exception as exc:
+        return unavailable(f"读取 models/LLM 失败：{exc}")
+    try:
+        models = list(module._过滤可选llm文件(files, is_mmproj=False))
+        mmproj = list(module._过滤可选llm文件(files, is_mmproj=True))
+    except Exception as exc:
+        return unavailable(f"筛选 Qwen 模型失败：{exc}")
+
+    _qwen_error = ""
+    default_model = _pick_qwen_model(models)
+    available = bool(models)
+    reason = "" if available else "models/LLM 下没有可用的 .gguf 模型（Qwen 反推不可用）"
+    return {
+        "available": available,
+        "models": models,
+        "mmproj": mmproj,
+        "default_model": default_model,
+        "default_mmproj": _pick_mmproj(mmproj, default_model),
+        "families": list(QWEN_FAMILIES),
+        "prompt": QWEN_DEFAULT_PROMPT,
+        "system": QWEN_DEFAULT_SYSTEM,
+        "reason": reason,
+    }
+
+
+def _pil_to_tensor(pil):
+    """PIL -> ComfyUI IMAGE tensor（[1,H,W,3] float32，0~1）。"""
+    import numpy as np
+    import torch
+
+    array = np.asarray(pil.convert("RGB")).astype(np.float32) / 255.0
+    return torch.from_numpy(array).unsqueeze(0)
+
+
+def run_qwen(
+    pil,
+    *,
+    model: str,
+    mmproj: str = "",
+    prompt: str = "",
+    system: str = "",
+    family: str = "Qwen3.5-VL",
+    max_side: int = 1024,
+    max_tokens: int = 1024,
+    temperature: float = 0.7,
+    top_p: float = 0.9,
+    top_k: int = 20,
+    seed: int = -1,
+    n_ctx: int = 8192,
+    n_gpu_layers: int = -1,
+) -> str:
+    """用 Qwen3.5-VL 对单张图生成提示词。"""
+    if not model:
+        raise RuntimeError("没有选择 Qwen 模型")
+    module = _load_qwente()
+
+    loader = module.QwenTE模型加载器()
+    default_cache = getattr(module, "默认KV缓存类型", "默认(F16)")
+    default_mtp_tokens = int(getattr(module, "默认MTP草稿token数", 2))
+    model_obj = loader.load(
+        模型系列=family if family in QWEN_FAMILIES else "Qwen3.5-VL",
+        主模型=model,
+        视觉投影mmproj=mmproj or "无",
+        启用思考=False,
+        保留历史think=False,
+        上下文长度=max(1024, int(n_ctx or 8192)),
+        GPU层数=int(n_gpu_layers),
+        KV缓存K类型=default_cache,
+        KV缓存V类型=default_cache,
+        MoE专家上CPU=False,
+        前N层专家上CPU=0,
+        **{
+            "Qwen3.8推理强度": "xhigh",
+            "MTP推测解码": "关闭",
+            "MTP草稿token数": default_mtp_tokens,
+            "Flash Attention": "不开启",
+            "MTP草稿模型": "无",
+        },
+    )
+    # 节点方法返回 (model,)，这里取回模型对象本身
+    if isinstance(model_obj, (tuple, list)):
+        model_obj = model_obj[0] if model_obj else None
+    if model_obj is None:
+        raise RuntimeError("Qwen 模型加载失败")
+
+    tensor = _pil_to_tensor(pil)
+    infer = module.QwenTE图像推理()
+    with _qwen_lock:  # 模型是全局单例，批量时串行
+        out = infer.run(
+            qwen模型=model_obj,
+            输入模式="图片",
+            提示词=str(prompt or QWEN_DEFAULT_PROMPT),
+            系统提示词=str(system or QWEN_DEFAULT_SYSTEM),
+            最多帧数=1,
+            最大边长=max(128, int(max_side or 1024)),
+            最大生成token=max(20, int(max_tokens or 1024)),
+            温度=float(temperature),
+            top_p=float(top_p),
+            top_k=int(top_k),
+            重复惩罚=1.0,
+            频率惩罚=0.0,
+            存在惩罚=0.0,
+            seed=int(seed),
+            输出think块=False,
+            生成后自动卸载模型=False,
+            图片=tensor,
+        )
+    if isinstance(out, (tuple, list)):
+        out = out[0] if out else ""
+    return str(out or "").strip()
+
+
+# --------------------------------------------------------------------------- #
 # 后台任务
 # --------------------------------------------------------------------------- #
 _job_lock = threading.Lock()
@@ -425,19 +642,26 @@ def start_job(paths: list[str], options: dict) -> dict:
     if len(cleaned) > MAX_JOB_RESULTS:
         raise ValueError(f"一次最多反推 {MAX_JOB_RESULTS} 张")
 
-    models = list_models()
-    if not models:
-        raise RuntimeError("没有可用的打标模型：需要 ComfyUI-WD14-Tagger 的 models 目录里有 .onnx + .csv")
-
-    model = str(options.get("model") or default_model(models))
-    if _model_files(model) is None:
-        model = default_model(models)
-
     mode = str(options.get("mode") or "tags")
-    if mode not in ("tags", "tipo", "tipo_nl"):
+    if mode not in ("tags", "tipo", "tipo_nl", "qwen"):
         mode = "tags"
-    tipo_info = tipo_status()
-    if mode != "tags" and not tipo_info["available"]:
+
+    # Qwen 走自己的模型；其余模式才需要 WD14
+    qwen_info = qwen_status() if mode == "qwen" else {"available": False}
+    models = list_models()
+    model = ""
+    if mode == "qwen":
+        if not qwen_info.get("available"):
+            raise RuntimeError(qwen_info.get("reason") or "Qwen 反推不可用")
+    else:
+        if not models:
+            raise RuntimeError("没有可用的打标模型：需要 ComfyUI-WD14-Tagger 的 models 目录里有 .onnx + .csv")
+        model = str(options.get("model") or default_model(models))
+        if _model_files(model) is None:
+            model = default_model(models)
+
+    tipo_info = tipo_status() if mode in ("tipo", "tipo_nl") else {"available": False, "default": "", "device": "cpu"}
+    if mode in ("tipo", "tipo_nl") and not tipo_info["available"]:
         mode = "tags"
 
     payload = {
@@ -454,6 +678,16 @@ def start_job(paths: list[str], options: dict) -> dict:
         "tipo_tag_length": str(options.get("tipo_tag_length") or "long"),
         "tipo_temperature": float(options.get("tipo_temperature", 0.5)),
         "tipo_seed": int(options.get("tipo_seed", -1) or -1),
+        # Qwen3.5-VL 反推
+        "qwen_model": str(options.get("qwen_model") or qwen_info.get("default_model") or ""),
+        "qwen_mmproj": str(options.get("qwen_mmproj") or qwen_info.get("default_mmproj") or ""),
+        "qwen_family": str(options.get("qwen_family") or "Qwen3.5-VL"),
+        "qwen_prompt": str(options.get("qwen_prompt") or QWEN_DEFAULT_PROMPT),
+        "qwen_system": str(options.get("qwen_system") or QWEN_DEFAULT_SYSTEM),
+        "qwen_max_side": int(options.get("qwen_max_side", 1024) or 1024),
+        "qwen_max_tokens": int(options.get("qwen_max_tokens", 1024) or 1024),
+        "qwen_temperature": float(options.get("qwen_temperature", 0.7)),
+        "qwen_seed": int(options.get("qwen_seed", -1) or -1),
     }
 
     job_id = uuid.uuid4().hex[:12]
@@ -468,7 +702,7 @@ def start_job(paths: list[str], options: dict) -> dict:
         "cancel": False,
         "started": time.time(),
         "elapsed": 0.0,
-        "model": model,
+        "model": model or payload["qwen_model"],
         "mode": mode,
     }
     with _job_lock:
@@ -514,38 +748,54 @@ def _run_job(job: dict, paths: list[str], opts: dict) -> None:
                     raise ValueError("不是图片文件")
                 with Image.open(path) as pil:
                     width, height = pil.size
-                    result = tag_image(
-                        pil,
-                        opts["model"],
-                        opts["threshold"],
-                        opts["character_threshold"],
-                        opts["replace_underscore"],
-                        opts["trailing_comma"],
-                        opts["exclude_tags"],
-                    )
-                tags_text = result["text"]
-                record["tags"] = tags_text
-                record["tag_count"] = result["count"]
-                text = tags_text
-                if opts["mode"] != "tags" and tags_text:
-                    try:
-                        expanded = run_tipo(
-                            tags_text,
-                            opts["tipo_model"],
-                            width,
-                            height,
-                            device=opts["tipo_device"],
-                            tag_length=opts["tipo_tag_length"],
-                            temperature=opts["tipo_temperature"],
-                            seed=opts["tipo_seed"],
-                            tags_only=opts["mode"] == "tipo",
+                    if opts["mode"] == "qwen":
+                        text = run_qwen(
+                            pil,
+                            model=opts["qwen_model"],
+                            mmproj=opts["qwen_mmproj"],
+                            prompt=opts["qwen_prompt"],
+                            system=opts["qwen_system"],
+                            family=opts["qwen_family"],
+                            max_side=opts["qwen_max_side"],
+                            max_tokens=opts["qwen_max_tokens"],
+                            temperature=opts["qwen_temperature"],
+                            seed=opts["qwen_seed"],
                         )
-                        if expanded:
-                            text = expanded
-                        else:
-                            record["error"] = "TIPO 没有输出，已保留原始标签"
-                    except Exception as exc:
-                        record["error"] = f"TIPO 失败，已保留原始标签：{exc}"
+                        if not text:
+                            record["error"] = "Qwen 没有输出"
+                    else:
+                        result = tag_image(
+                            pil,
+                            opts["model"],
+                            opts["threshold"],
+                            opts["character_threshold"],
+                            opts["replace_underscore"],
+                            opts["trailing_comma"],
+                            opts["exclude_tags"],
+                        )
+                        tags_text = result["text"]
+                        record["tags"] = tags_text
+                        record["tag_count"] = result["count"]
+                        text = tags_text
+                        if opts["mode"] != "tags" and tags_text:
+                            try:
+                                expanded = run_tipo(
+                                    tags_text,
+                                    opts["tipo_model"],
+                                    width,
+                                    height,
+                                    device=opts["tipo_device"],
+                                    tag_length=opts["tipo_tag_length"],
+                                    temperature=opts["tipo_temperature"],
+                                    seed=opts["tipo_seed"],
+                                    tags_only=opts["mode"] == "tipo",
+                                )
+                                if expanded:
+                                    text = expanded
+                                else:
+                                    record["error"] = "TIPO 没有输出，已保留原始标签"
+                            except Exception as exc:
+                                record["error"] = f"TIPO 失败，已保留原始标签：{exc}"
                 if opts["prefix"]:
                     text = f"{opts['prefix']}, {text}" if text else opts["prefix"]
                 record["text"] = _clean_text(text)
@@ -695,6 +945,7 @@ def write_captions(items: list[dict], mode: str = "skip", ext: str = ".txt") -> 
 def info() -> dict:
     models = list_models()
     tipo = tipo_status()
+    qwen = qwen_status()
     return {
         "ok": True,
         "models": models,
@@ -704,5 +955,6 @@ def info() -> dict:
             "character_threshold": DEFAULT_CHARACTER_THRESHOLD,
         },
         "tipo": tipo,
+        "qwen": qwen,
         "ext": ".txt",
     }

@@ -15,7 +15,7 @@
 - **提示词就在旁边**：同目录同名的 `.txt / .caption / .json` 自动配对，悬停即看，选图时不用来回翻文件
 - **跨文件夹也能配**：图片在 `output/`、提示词在 `output/提示词/`，只要两个目录都在路径列表里，同名就会配上
 - **选完即出图**：选中的图片 + 对应提示词写进隐藏参数，执行时按顺序逐个输出，接 KSampler / SaveImage 直接跑批量
-- **配套齐全**：打标（WD14 + TIPO）、批量转格式压缩、收藏、回收站，都在同一个节点里
+- **配套齐全**：打标（WD14 / TIPO / Qwen3.5-VL）、批量转格式压缩、收藏、回收站，都在同一个节点里
 
 ---
 
@@ -47,7 +47,7 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 2. 画布右键 → **local gallery** → **本地图库浏览器 (Local Gallery)**
 
 > 本节点自身**不需要额外依赖**，只用 ComfyUI 自带的 `Pillow` / `numpy` / `torch`。
-> 唯一的可选依赖是「反推」：打标复用已装的 `ComfyUI-WD14-Tagger`（需 `onnxruntime`），扩写复用 `z-tipo-extension`（需 `kgen` + `llama-cpp-python`）。两个都没装时节点照常工作，只有反推页不可用。
+> 唯一的可选依赖是「反推」：打标复用已装的 `ComfyUI-WD14-Tagger`（需 `onnxruntime`），扩写复用 `z-tipo-extension`（需 `kgen` + `llama-cpp-python`），Qwen 反推复用 `comfyUI-llama-TE` + `models/LLM` 里的 gguf。都没装时节点照常工作，只有反推页不可用。
 
 ---
 
@@ -204,9 +204,11 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 | 仅标签 | WD14 原始标签，逗号分隔 | 0.4~2.2 秒/张 |
 | TIPO 扩写标签 | 补全 danbooru 标签，不生成英文描述 | +2~8 秒/张 |
 | TIPO 标签 + 描述 | 标签 + 一段英文自然语言 | +3~10 秒/张 |
+| Qwen3.5 反推 | 直接用 Qwen3.5-VL 生成中文提示词（可改提示词模板） | 20~60 秒/张（首次要加载模型） |
 
-- 用哪个模型：打标直接扫 `ComfyUI-WD14-Tagger/models` 里的 `.onnx` + `.csv`；扩写复用 `z-tipo-extension` 的 gguf 列表
-- 缺依赖会降级：没有打标模型 → 页面提示不可用；没有 TIPO → 下拉禁用，只能出标签
+- 用哪个模型：打标直接扫 `ComfyUI-WD14-Tagger/models` 里的 `.onnx` + `.csv`；扩写复用 `z-tipo-extension` 的 gguf 列表；Qwen 读 `models/LLM` 里的 gguf + mmproj（复用已装的 `comfyUI-llama-TE`）
+- 缺依赖会降级：没有打标模型 → 页面提示不可用；没有 TIPO → 下拉禁用，只能出标签；没有 QwenTE / LLM 模型 → Qwen 选项禁用
+- Qwen 模式参数：`Qwen 模型` + `mmproj`（视觉投影，必须选）、`最大边长`、`最大 token`、`温度`；提示词一行可改，默认是「生成中文提示词，内容详尽细致，仅输出最终提示词」
 - 写回方式三选一：`已有 .txt 就跳过`（默认）/ `覆盖（备份 .bak）` / `追加到末尾`
 - 阈值默认 0.35 / 角色阈值 0.85，「下划线换空格」默认开（`long_hair → long hair`）
 - 前缀（如 `@wanet`）加在每条最前面，进 TIPO 之前不加，避免污染模型输入
@@ -410,7 +412,7 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 | GET | `/local_gallery/trash/thumb?batch=&stored=&size=` | 回收站缩略图 |
 | POST | `/local_gallery/trash/restore` `{"items":[{"batch","id"}]}` | 按原路径恢复 |
 | POST | `/local_gallery/trash/purge` `{"batch":"..."}` / `{}` | 永久删除某批 / 全部 |
-| GET | `/local_gallery/caption/info` | 反推配置（可用模型 / 默认阈值 / TIPO 是否可用） |
+| GET | `/local_gallery/caption/info` | 反推配置（WD14 / TIPO / Qwen 可用模型与默认值） |
 | POST | `/local_gallery/caption/start` `{"paths":[...],"options":{...}}` | 启动反推（同时只允许一个） |
 | GET | `/local_gallery/caption/status?job=&since=0` | 反推进度 + 增量结果 |
 | POST | `/local_gallery/caption/cancel` `{"job":"..."}` | 停止反推 |
@@ -430,7 +432,7 @@ ComfyUI-LocalGallery/
 ├── nodes.py             # 节点定义（输出 images / prompts / filenames）
 ├── gallery.py           # 扫描、缩略图、配置、回收站、收藏
 ├── routes.py            # HTTP 接口
-├── captioner.py         # 反推（WD14 / TIPO）后台任务
+├── captioner.py         # 反推（WD14 / TIPO / Qwen3.5-VL）后台任务
 ├── convert.py           # 转换 / 压缩后台任务
 ├── prompt_reader.py     # 提示词匹配与读取
 ├── favorites.py         # 收藏持久化

@@ -14,7 +14,7 @@ Browse your local image folders right inside ComfyUI: waterfall thumbnails, hove
 - **Nothing to upload** — point it at a local folder (or a single image) and you get a thumbnail wall; hundreds of images stay smooth
 - **Prompts right there** — matching `a.txt / a.caption / a.json` in the same folder is picked up automatically; hover a thumbnail to read it
 - **Select, then generate** — selected images and their prompts go into a hidden widget, and the node outputs them in order; wire it into KSampler / SaveImage for batch runs
-- **Batteries included** — captioning (WD14 + TIPO), batch convert/compress, favorites and a trash bin, all in the same node
+- **Batteries included** — captioning (WD14 / TIPO / Qwen3.5-VL), batch convert/compress, favorites and a trash bin, all in the same node
 
 ---
 
@@ -46,7 +46,7 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 2. Right-click the canvas → **local gallery** → **本地图库浏览器 (Local Gallery)**
 
 > No extra dependencies for the node itself — it only uses the `Pillow` / `numpy` / `torch` that ship with ComfyUI.
-> The only optional dependencies are for the **Caption** tab: tagging reuses an installed `ComfyUI-WD14-Tagger` (`onnxruntime`), expansion reuses `z-tipo-extension` (`kgen` + `llama-cpp-python`). Without them the node still works — just that tab is disabled.
+> The only optional dependencies are for the **Caption** tab: tagging reuses an installed `ComfyUI-WD14-Tagger` (`onnxruntime`), expansion reuses `z-tipo-extension` (`kgen` + `llama-cpp-python`), and Qwen captioning reuses `comfyUI-llama-TE` plus a gguf in `models/LLM`. Without them the node still works — just that tab is disabled.
 
 ---
 
@@ -201,9 +201,11 @@ It's the same chain as `LoadImage → WD14Tagger → TIPO → SaveText`, but wit
 | Tags only | Raw WD14 tags, comma separated | 0.4–2.2 s/image |
 | TIPO expanded tags | Fills in danbooru tags, no prose | +2–8 s/image |
 | TIPO tags + description | Tags plus an English sentence | +3–10 s/image |
+| Qwen3.5 caption | Qwen3.5-VL writes a Chinese prompt directly (editable template) | 20–60 s/image (first run loads the model) |
 
-- Model sources: tagging scans `ComfyUI-WD14-Tagger/models` for `.onnx` + `.csv`; expansion uses the gguf list from `z-tipo-extension`
-- Graceful degradation: no tagging model → the tab says so; no TIPO → the dropdown is disabled and only tags are produced
+- Model sources: tagging scans `ComfyUI-WD14-Tagger/models` for `.onnx` + `.csv`; expansion uses the gguf list from `z-tipo-extension`; Qwen reads gguf + mmproj from `models/LLM`
+- Graceful degradation: no tagging model → the tab says so; no TIPO → the dropdown is disabled and only tags are produced; no QwenTE / LLM model → the Qwen option is disabled
+- Qwen options: model + mmproj (vision projector, required), max side, max tokens, temperature; the prompt line is editable and defaults to "describe in detailed Chinese, output the final prompt only"
 - Write modes: `Skip if .txt exists` (default) / `Overwrite (backup .bak)` / `Append to end`
 - Defaults: threshold 0.35, character threshold 0.85, "underscore to space" on (`long_hair → long hair`)
 - Prefix (e.g. `@wanet`) is prepended to each line — not fed into TIPO, to keep the model input clean
@@ -408,7 +410,7 @@ Every field is also editable from the Settings panel; editing the JSON by hand w
 | GET | `/local_gallery/trash/thumb?batch=&stored=&size=` | Trash thumbnail |
 | POST | `/local_gallery/trash/restore` `{"items":[{"batch","id"}]}` | Restore to original paths |
 | POST | `/local_gallery/trash/purge` `{"batch":"..."}` / `{}` | Permanently delete a batch / everything |
-| GET | `/local_gallery/caption/info` | Caption config (models, defaults, TIPO availability) |
+| GET | `/local_gallery/caption/info` | Caption config (WD14 / TIPO / Qwen models and defaults) |
 | POST | `/local_gallery/caption/start` `{"paths":[...],"options":{...}}` | Start captioning (one job at a time) |
 | GET | `/local_gallery/caption/status?job=&since=0` | Caption progress + incremental results |
 | POST | `/local_gallery/caption/cancel` `{"job":"..."}` | Stop captioning |
@@ -446,7 +448,7 @@ ComfyUI-LocalGallery/
 ├── nodes.py             # node definition (images / prompts / filenames)
 ├── gallery.py           # scanning, thumbnails, config, trash, favorites
 ├── routes.py            # HTTP endpoints
-├── captioner.py         # caption jobs (WD14 / TIPO)
+├── captioner.py         # caption jobs (WD14 / TIPO / Qwen3.5-VL)
 ├── convert.py           # convert / compress jobs
 ├── prompt_reader.py     # prompt matching
 ├── favorites.py         # favorites persistence
