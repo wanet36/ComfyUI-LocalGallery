@@ -4474,6 +4474,10 @@ app.registerExtension({
         // 图库页最近一次渲染出来的列表：提示词页固定用它，
         // 这样切到收藏页时提示词页不会跟着变成收藏的图
         galleryVisible: [],
+        // 图库页 / 收藏页各自一份选中集，互不干扰；
+        // state.selected 永远指向「当前页那一份」，切页时只换指针。
+        selGallery: new Map(),
+        selFavorites: new Map(),
         selected: new Map(),
         // 提示词页的选中项（path -> 顺序）：只出提示词、不出图，和图片选择互不影响
         promptSel: new Map(),
@@ -4528,6 +4532,24 @@ app.registerExtension({
         orphanLoaded: false,
         orphanSeq: 0,
       };
+
+      // 指针先落在图库那份上；切页签时由 useSelectionFor 换槽
+      state.selected = state.selGallery;
+
+      /* 图库 / 收藏各有一份选中集：只有切到这两页才换指针。
+         反推、转换、对比、提示词沿用「进来之前那一页」的选中，
+         这样在收藏页选完图直接进反推页，处理的还是收藏那几张。 */
+      function useSelectionFor(tab) {
+        if (tab === "favorites") state.selected = state.selFavorites;
+        else if (tab === "gallery") state.selected = state.selGallery;
+      }
+
+      /* 整表替换（框选、全选这类会新建 Map 的操作）：槽和指针一起换 */
+      function setActiveSelection(next) {
+        if (state.selected === state.selFavorites) state.selFavorites = next;
+        else state.selGallery = next;
+        state.selected = next;
+      }
 
       /* UI 设置：服务端持久化（换浏览器也在），目前只存收藏导出目录 */
       const uiSettings = { favorites_export_dir: "" };
@@ -5287,17 +5309,23 @@ app.registerExtension({
       }
 
       function commitSelection() {
-        const ordered = [...state.selected.entries()].sort((a, b) => a[1] - b[1]);
-        const items = ordered.map(([path]) => ({
-          path,
-          prompt: state.promptCache.get(path)?.prompt || "",
-        }));
-        // 提示词页的选中项单独一列：后端只取它的文本，不加载对应图片
-        const prompts = [...state.promptSel.entries()]
-          .sort((a, b) => a[1] - b[1])
-          .map(([path]) => ({ path, prompt: state.promptCache.get(path)?.prompt || "" }));
-        // filenames 跟当前页签走：图库/收藏页给图片名，提示词页给提示词名
-        const filename_from = state.tab === "prompts" ? "prompt" : "image";
+        // 只提交「当前停留那一页」的选中项：停在提示词页就只给 prompts，
+        // 停在图库/收藏（以及反推、转换、对比）就只给 items，另一边留空。
+        // 两边都交的话，后端会把图库的图和提示词页的文本混在一起输出。
+        const onPrompts = state.tab === "prompts";
+        const items = onPrompts
+          ? []
+          : [...state.selected.entries()]
+              .sort((a, b) => a[1] - b[1])
+              .map(([path]) => ({ path, prompt: state.promptCache.get(path)?.prompt || "" }));
+        // 提示词页的选中项走 prompts 通道：后端只取它的文本，不加载对应图片
+        const prompts = onPrompts
+          ? [...state.promptSel.entries()]
+              .sort((a, b) => a[1] - b[1])
+              .map(([path]) => ({ path, prompt: state.promptCache.get(path)?.prompt || "" }))
+          : [];
+        // filenames 跟着页签：图片页给图片名，提示词页给提示词名
+        const filename_from = onPrompts ? "prompt" : "image";
         if (selectionWidget) selectionWidget.value = JSON.stringify({ items, prompts, filename_from });
         app.graph.setDirtyCanvas(true, true);
       }
@@ -5352,10 +5380,13 @@ app.registerExtension({
       }
 
       function renumberSelection() {
-        let order = 0;
-        for (const key of [...state.selected.keys()]) {
-          state.selected.set(key, order);
-          order += 1;
+        // 图库 / 收藏各有一份，序号都要保持连续（切过去时编号才不会跳）
+        for (const map of [state.selGallery, state.selFavorites]) {
+          let order = 0;
+          for (const key of [...map.keys()]) {
+            map.set(key, order);
+            order += 1;
+          }
         }
       }
 
@@ -5549,7 +5580,7 @@ app.registerExtension({
             if (!next.has(path)) next.set(path, next.size);
           });
         }
-        state.selected = next;
+        setActiveSelection(next);
         renumberSelection();
         paintSelection();
       }
@@ -6374,6 +6405,8 @@ app.registerExtension({
           : "gallery";
         // filenames 跟页签走，切页就要把新的口径写进 selection_data
         state.tab = activeTab;
+        // 图库 / 收藏各自一份选中集：先换指针，后面的重绘和提交才会用到对的那份
+        useSelectionFor(activeTab);
         const isGallery = activeTab === "gallery";
         const isFav = activeTab === "favorites";
         const isPrompts = activeTab === "prompts";
@@ -7165,7 +7198,10 @@ app.registerExtension({
             state.galleryVisible = state.galleryVisible.filter((it) => !gone.has(it.path));
             let promptSelDirty = false;
             gone.forEach((p) => {
+              // 文件真的没了：两个页签的选中集都要清掉
               state.selected.delete(p);
+              state.selGallery.delete(p);
+              state.selFavorites.delete(p);
               state.promptCache.delete(p);
               if (state.promptSel.delete(p)) promptSelDirty = true;
             });
