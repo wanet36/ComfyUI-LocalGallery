@@ -5511,6 +5511,7 @@ app.registerExtension({
       pagePrompts.append(promptMarquee);
 
       let dragSel = null; // 拖动中的临时状态
+      let marqueeRaf = 0; // 合并 pointermove，每帧最多画一次
       let swallowClickUntil = 0;
 
       // 坐标基准跟着框选对象走：图片用 canvas（marqueeBox 的定位父级），
@@ -5570,29 +5571,62 @@ app.registerExtension({
         window.addEventListener("pointercancel", endMarquee, { once: true, capture: true });
       }
 
-      function applyMarquee(box) {
-        if (!dragSel) return;
+      /* 拖动开始时把候选元素的矩形缓存下来（相对宿主容器）。
+         拖动过程中每帧只做纯算术，绝不再逐个 getBoundingClientRect ——
+         那样每帧都强制同步布局，框就会明显滞后于指针（尤其图多的时候）。 */
+      function buildMarqueeCandidates() {
+        const hostEl = dragSel.kind === "prompt" ? pagePrompts : canvas;
+        const host = hostEl.getBoundingClientRect();
+        dragSel.hostRect = host;
+        const scope = dragSel.kind === "prompt" ? activePromptScroll() : canvas;
+        const sel = dragSel.kind === "prompt" ? ".lgb-prompt" : ".lgb-item, .lgb-lrow";
+        dragSel.cands = [];
+        scope.querySelectorAll(sel).forEach((dom) => {
+          const r = dom.getBoundingClientRect();
+          if (!r.width || !r.height) return;
+          dragSel.cands.push({
+            path: dom.dataset.path,
+            l: r.left - host.left,
+            t: r.top - host.top,
+            w: r.width,
+            h: r.height,
+          });
+        });
+        dragSel.lastSig = "";
+      }
+
+      /* 命中判定：纯算术，顺序即 DOM 顺序 = 列表顺序 */
+      function marqueeHits(box) {
+        const hits = [];
+        for (const c of dragSel.cands) {
+          if (c.l < box.right && c.l + c.w > box.left && c.t < box.bottom && c.t + c.h > box.top) {
+            hits.push(c.path);
+          }
+        }
+        return hits;
+      }
+
+      /* 把命中集写进当前页签那一份选中集 */
+      function applyMarqueeHits(hits) {
         if (dragSel.kind === "prompt") {
-          applyPromptMarquee(box);
+          const next = dragSel.add ? new Map(dragSel.base) : new Map();
+          if (state.pickMode === "single") {
+            if (hits.length) next.set(hits[0], 0);
+            else next.clear();
+          } else {
+            hits.forEach((path) => {
+              if (path && !next.has(path)) next.set(path, next.size);
+            });
+          }
+          state.promptSel.clear();
+          // 保序写回：Map 的 key 顺序就是输出顺序
+          [...next.entries()]
+            .sort((a, b) => a[1] - b[1])
+            .forEach(([path, order], i) => state.promptSel.set(path, i));
+          state.promptLast = -1;
+          paintSelection();
           return;
         }
-        const rect = canvas.getBoundingClientRect();
-        const hits = [];
-        // 网格卡片和列表行都可能出现在 canvas 里（时间分组时还嵌在组容器里），
-        // 统一按类名找，命中顺序就是 DOM 顺序 = 列表顺序
-        canvas.querySelectorAll(".lgb-item, .lgb-lrow").forEach((dom) => {
-          const r = dom.getBoundingClientRect();
-          const left = r.left - rect.left;
-          const top = r.top - rect.top;
-          if (
-            left < box.right &&
-            left + r.width > box.left &&
-            top < box.bottom &&
-            top + r.height > box.top
-          ) {
-            hits.push(dom.dataset.path);
-          }
-        });
         const next = dragSel.add ? new Map(dragSel.base) : new Map();
         if (state.pickMode === "single") {
           // 单选模式一次只留一张，多框也没意义
@@ -5608,65 +5642,38 @@ app.registerExtension({
         paintSelection();
       }
 
-      /* 提示词页的框选：命中只取当前那一档（提示词 / 无匹配）的行，写进 promptSel */
-      function applyPromptMarquee(box) {
-        const rect = pagePrompts.getBoundingClientRect();
-        const scope = activePromptScroll();
-        const hits = [];
-        scope.querySelectorAll(".lgb-prompt").forEach((dom) => {
-          const r = dom.getBoundingClientRect();
-          const left = r.left - rect.left;
-          const top = r.top - rect.top;
-          if (
-            left < box.right &&
-            left + r.width > box.left &&
-            top < box.bottom &&
-            top + r.height > box.top
-          ) {
-            hits.push(dom.dataset.path);
-          }
-        });
-        const next = dragSel.add ? new Map(dragSel.base) : new Map();
-        if (state.pickMode === "single") {
-          if (hits.length) next.set(hits[0], 0);
-          else next.clear();
-        } else {
-          hits.forEach((path) => {
-            if (path && !next.has(path)) next.set(path, next.size);
-          });
-        }
-        state.promptSel.clear();
-        // 保序写回：Map 的 key 顺序就是输出顺序
-        [...next.entries()]
-          .sort((a, b) => a[1] - b[1])
-          .forEach(([path, order], i) => state.promptSel.set(path, i));
-        state.promptLast = -1;
-        paintSelection();
-      }
-
       function onMarqueeMove(evt) {
         if (!dragSel) return;
         dragSel.clientX = evt.clientX;
         dragSel.clientY = evt.clientY;
-        const p = gridPoint(evt);
         if (!dragSel.moved) {
+          const p = gridPoint(evt);
           if (Math.hypot(p.x - dragSel.sx, p.y - dragSel.sy) < 4) return;
           dragSel.moved = true;
           wrap.classList.add("lgb-marquee-on");
           (dragSel.kind === "prompt" ? promptMarquee : marqueeBox).style.display = "";
+          buildMarqueeCandidates();
           startEdgeScroll();
         }
         // 拖选期间别让浏览器顺手把卡片文字也选上
         evt.preventDefault();
         hideTip();
-        paintMarquee();
+        // pointermove 在高刷屏上每秒上百次，合并成每帧画一次
+        if (!marqueeRaf) marqueeRaf = requestAnimationFrame(paintMarquee);
       }
 
       function paintMarquee() {
+        marqueeRaf = 0;
         if (!dragSel) return;
-        const p = gridPoint(dragSel);
-        dragSel.cx = p.x;
-        dragSel.cy = p.y;
+        // 宿主坐标在拖动开始时缓存好：这里若再读 rect，会因为刚写过 box 的 style
+        // 而触发强制同步布局，框就又开始滞后了
+        const rect =
+          dragSel.hostRect ||
+          (dragSel.kind === "prompt" ? pagePrompts : canvas).getBoundingClientRect();
+        const cx = dragSel.clientX - rect.left;
+        const cy = dragSel.clientY - rect.top;
+        dragSel.cx = cx;
+        dragSel.cy = cy;
         const left = Math.min(dragSel.sx, dragSel.cx);
         const top = Math.min(dragSel.sy, dragSel.cy);
         const width = Math.abs(dragSel.cx - dragSel.sx);
@@ -5676,7 +5683,13 @@ app.registerExtension({
         box.style.top = `${top}px`;
         box.style.width = `${width}px`;
         box.style.height = `${height}px`;
-        applyMarquee({ left, top, right: left + width, bottom: top + height });
+        if (!dragSel.cands) return;
+        const hits = marqueeHits({ left, top, right: left + width, bottom: top + height });
+        // 命中集没变就别重画选中：刷选中比挪框贵得多
+        const sig = hits.join("\n");
+        if (sig === dragSel.lastSig) return;
+        dragSel.lastSig = sig;
+        applyMarqueeHits(hits);
       }
 
       // 拖到上下边缘时自动滚动，不然框一整屏以外的图得松手再来一次
@@ -5698,7 +5711,12 @@ app.registerExtension({
           if (dy) {
             const before = scope.scrollTop;
             scope.scrollTop = before + dy;
-            if (scope.scrollTop !== before) paintMarquee();
+            const delta = scope.scrollTop - before;
+            if (delta) {
+              // 内容整体上移，缓存里的 top 同步减掉，否则命中会越来越偏
+              if (dragSel.cands) dragSel.cands.forEach((c) => { c.t -= delta; });
+              paintMarquee();
+            }
           }
           scrollRaf = requestAnimationFrame(tick);
         };
@@ -5710,6 +5728,10 @@ app.registerExtension({
         if (scrollRaf) {
           cancelAnimationFrame(scrollRaf);
           scrollRaf = 0;
+        }
+        if (marqueeRaf) {
+          cancelAnimationFrame(marqueeRaf);
+          marqueeRaf = 0;
         }
         const moved = !!dragSel?.moved;
         dragSel = null;
