@@ -1150,7 +1150,9 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
 
 /* ================================================================ 页面 */
 .lgb-page {
-  flex: 1 1 auto;
+  /* flex-basis 必须是 0：nodes 2.0 的节点高度按行内容计算，
+     用 auto 会让图片内容把节点撑高、拖拽也缩不下去 */
+  flex: 1 1 0;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -1161,8 +1163,8 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   display: none;
 }
 .lgb-scroll {
-  flex: 1 1 auto;
-  min-height: 80px;
+  flex: 1 1 0;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   border: 1px solid var(--lg-line);
@@ -5043,35 +5045,15 @@ app.registerExtension({
       });
       if (domWidget) domWidget.serialize = false;
 
-      // nodes 2.0：节点内是 CSS grid（.lg-node-widget），DOM 面板高度由内容撑开，
-      // 图片一多节点就跟着变高、怎么都缩不下去。这里把面板高度钉在节点尺寸上。
-      function syncDomHostSize() {
-        const el = domWidget?.element;
-        if (!el) return;
-        // 只在 nodes 2.0 的结构里动手，旧版 LiteGraph 自己会算高度
-        if (!el.closest?.(".lg-node-widget")) return;
-        const size = node.size || [790, 780];
-        el.style.height = `${Math.max(120, Math.round(size[1] - 86))}px`;
-        el.style.flex = "0 0 auto";
-        el.style.minHeight = "0";
-        el.style.overflow = "hidden";
+      // nodes 2.0 的节点高度按行内容计算，DOM 面板一旦被图片内容撑高，
+      // 节点就跟着变高、拖拽也缩不下去。高度问题已在 CSS 里解决
+      // （.lgb-wrap 撑满、.lgb-page / .lgb-scroll 用 flex-basis: 0），
+      // 这里只确保面板始终占满节点给的那一格。
+      const domHostEl = domWidget?.element;
+      if (domHostEl) {
+        domHostEl.style.minHeight = "0";
+        domHostEl.style.overflow = "hidden";
       }
-      const originalOnResize = node.onResize;
-      node.onResize = function () {
-        originalOnResize?.apply(this, arguments);
-        syncDomHostSize();
-      };
-      // 创建时 DOM 还没挂进 .lg-node-widget，等挂载后再钉高度
-      let syncTries = 0;
-      function ensureDomHostSize() {
-        const el = domWidget?.element;
-        if (el?.closest?.(".lg-node-widget")) {
-          syncDomHostSize();
-          return;
-        }
-        if (syncTries++ < 120) requestAnimationFrame(ensureDomHostSize);
-      }
-      ensureDomHostSize();
 
       /* ---------------- chips ---------------- */
       // 路径标签已搬进「浏览」弹窗（那里空间更宽，能看全路径），
