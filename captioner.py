@@ -18,6 +18,7 @@
 from __future__ import annotations
 
 import csv
+import gc
 import importlib
 import logging
 import os
@@ -620,6 +621,77 @@ def run_qwen(
 
 
 # --------------------------------------------------------------------------- #
+# 释放模型 / 显存
+# --------------------------------------------------------------------------- #
+def _vram_cleanup_class():
+    """取 comfyui_memory_cleanup 的 VRAMCleanup 类（ComfyUI 已加载过就在 sys.modules 里）。"""
+    for module in list(sys.modules.values()):
+        try:
+            data = getattr(module, "__dict__", None)
+        except Exception:
+            continue
+        if isinstance(data, dict) and "VRAMCleanup" in data and "RAMCleanup" in data:
+            return data["VRAMCleanup"]
+    return None
+
+
+def release_all() -> str:
+    """反推任务结束后释放模型与缓存，返回实际用的方式。
+
+    - 先精确释放反推自己的模型：Qwen gguf、WD14 onnx session、TIPO kgen
+    - 再复用 `comfyui_memory_cleanup` 的 VRAMCleanup：unload_all_models + gc + soft_empty_cache
+      （装了就用它的完整逻辑，没装则退回最基础的 gc + soft_empty_cache）
+    """
+    # Qwen（llama.cpp / gguf）：没加载过就跳过，不为卸载而加载
+    if _qwen_module is not None:
+        storage = getattr(_qwen_module, "_QwenStorage", None)
+        if storage is not None:
+            try:
+                storage.unload()
+            except Exception:
+                logger.debug("[LocalGallery] 卸载 Qwen 模型失败", exc_info=True)
+
+    # WD14（onnxruntime）
+    try:
+        release_models()
+    except Exception:
+        logger.debug("[LocalGallery] 释放 WD14 session 失败", exc_info=True)
+
+    # TIPO（kgen）：清理后下次会重新 load_model
+    if _tipo_module is not None:
+        try:
+            import kgen.models as kgen_models
+
+            kgen_models.text_model = None
+            kgen_models.tokenizer = None
+            kgen_models.current_model_name = None
+            if hasattr(_tipo_module, "_current_model"):
+                _tipo_module._current_model = None
+        except Exception:
+            logger.debug("[LocalGallery] 释放 TIPO 模型失败", exc_info=True)
+
+    # 整体清显存：优先用 VRAMCleanup 节点（它内部会 gc + soft_empty_cache + 标记 free_memory）
+    cleanup = _vram_cleanup_class()
+    if cleanup is not None:
+        try:
+            cleanup().empty_cache(True, True)
+            logger.info("[LocalGallery] 反推结束，已通过 VRAMCleanup 释放模型与显存")
+            return "vram_cleanup"
+        except Exception:
+            logger.debug("[LocalGallery] VRAMCleanup 执行失败，改用内置清理", exc_info=True)
+
+    gc.collect()
+    try:
+        import comfy.model_management as mm
+
+        mm.soft_empty_cache()
+    except Exception:
+        pass
+    logger.info("[LocalGallery] 反推结束，已释放模型与显存缓存")
+    return "basic"
+
+
+# --------------------------------------------------------------------------- #
 # 后台任务
 # --------------------------------------------------------------------------- #
 _job_lock = threading.Lock()
@@ -702,6 +774,7 @@ def start_job(paths: list[str], options: dict) -> dict:
         "cancel": False,
         "started": time.time(),
         "elapsed": 0.0,
+        "released": "",
         "model": model or payload["qwen_model"],
         "mode": mode,
     }
@@ -804,10 +877,6 @@ def _run_job(job: dict, paths: list[str], opts: dict) -> None:
             with _job_lock:
                 job["results"].append(record)
                 job["done"] = len(job["results"])
-        else:
-            job["state"] = "done"
-        if job["state"] == "running":
-            job["state"] = "done"
     except Exception as exc:  # pragma: no cover - 兜底
         logger.exception("[LocalGallery] 反推任务异常")
         job["error"] = f"{type(exc).__name__}: {exc}"
@@ -815,6 +884,10 @@ def _run_job(job: dict, paths: list[str], opts: dict) -> None:
     finally:
         job["elapsed"] = time.time() - job["started"]
         job["current"] = ""
+        # 先释放模型，再把任务标记完成：避免前端看到 done 时显存还没放掉
+        job["released"] = release_all()
+        if job["state"] == "running":
+            job["state"] = "done"
 
 
 def job_status(job_id: str, since: int = 0) -> dict | None:
@@ -832,6 +905,7 @@ def job_status(job_id: str, since: int = 0) -> dict | None:
             "elapsed": round(time.time() - job["started"], 1) if job["state"] == "running" else round(job["elapsed"], 1),
             "error": job["error"],
             "current": job["current"],
+            "released": job.get("released", ""),
             "model": job["model"],
             "mode": job["mode"],
         }

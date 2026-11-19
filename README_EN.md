@@ -210,6 +210,7 @@ It's the same chain as `LoadImage → WD14Tagger → TIPO → SaveText`, but wit
 - Defaults: threshold 0.35, character threshold 0.85, "underscore to space" on (`long_hair → long hair`)
 - Prefix (e.g. `@wanet`) is prepended to each line — not fed into TIPO, to keep the model input clean
 - Runs in the background; closing the panel doesn't stop it. Only one job at a time
+- **VRAM is released automatically** when a job finishes, is stopped, or fails: Qwen / WD14 / TIPO models are unloaded and caches cleared. If `comfyui_memory_cleanup` is installed its `VRAMCleanup` is reused (`unload_all_models` + `soft_empty_cache`), and the status line shows "VRAM released"
 - Each result is one row (same row style as the Gallery **list mode**): thumbnail + file name, `resolution · size`, then the editable prompt below
 - This tab deliberately hides bulk delete, so "clear caption results" can't be mistaken for "delete images"
 

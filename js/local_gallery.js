@@ -3488,6 +3488,7 @@ const I18N_EN = {
   "反推失败：{err}": "Captioning failed: {err}",
   "已停止 · 完成 {n} 张": "Stopped · {n} done",
   "完成 {n} 张 · 用时 {s}s": "{n} done · {s}s",
+  "完成 {n} 张 · 用时 {s}s · 已释放显存": "{n} done · {s}s · VRAM released",
   "这些路径下没有图片。到「设置 → 浏览本机路径」勾上「含子目录」，或换一个路径。": "No images under these paths. Tick “Include subfolders” in Settings → Browse local paths, or try another path.",
   "这些路径下只有 {n} 个提示词文件，没有图片 —— 图库只显示图片，这些 .txt 可以去「提示词 → 无匹配提示词」里看":
     "These paths hold {n} prompt files but no images — the gallery only lists images; those .txt files show up under Prompts → Orphans",
@@ -7508,6 +7509,7 @@ app.registerExtension({
         current: "",
         elapsed: 0,
         error: "",
+        released: "",
         results: [],
         texts: new Map(),
         since: 0,
@@ -7963,6 +7965,7 @@ app.registerExtension({
             rev.current = job.current || "";
             rev.elapsed = job.elapsed || 0;
             rev.error = job.error || "";
+            rev.released = job.released || "";
             paintState();
             if (revRunning()) {
               rev.timer = setTimeout(poll, 420);
@@ -7974,7 +7977,11 @@ app.registerExtension({
             } else if (rev.state === "cancelled") {
               setTpl(revStatus, "已停止 · 完成 {n} 张", { n: rev.done });
             } else {
-              setTpl(revStatus, "完成 {n} 张 · 用时 {s}s", { n: rev.done, s: rev.elapsed });
+              setTpl(
+                revStatus,
+                rev.released ? "完成 {n} 张 · 用时 {s}s · 已释放显存" : "完成 {n} 张 · 用时 {s}s",
+                { n: rev.done, s: rev.elapsed }
+              );
             }
             rev.statusText = revStatus.textContent;
             if (activeTab !== "reverse") {
@@ -8015,6 +8022,7 @@ app.registerExtension({
           rev.texts.clear();
           rev.since = 0;
           rev.error = "";
+          rev.released = "";
           rev.statusText = "";
           list.querySelectorAll(".lgb-rev-item").forEach((row) => row.remove());
           btnStart.disabled = true;

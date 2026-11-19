@@ -213,6 +213,7 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 - 阈值默认 0.35 / 角色阈值 0.85，「下划线换空格」默认开（`long_hair → long hair`）
 - 前缀（如 `@wanet`）加在每条最前面，进 TIPO 之前不加，避免污染模型输入
 - 任务在后台跑，关掉面板不中断；同一时间只允许一个任务
+- **结束后自动释放显存**：任务完成 / 停止 / 出错都会卸载 Qwen、WD14、TIPO 的模型并清缓存；装过 `comfyui_memory_cleanup` 时直接复用它的 `VRAMCleanup`（`unload_all_models` + `soft_empty_cache`），状态栏会显示「已释放显存」
 - 每条结果是一行（行样式与图库**列表模式**一致）：左边缩略图 + 文件名、`分辨率 · 体积`，下面直接编辑提示词
 - 这个页面刻意**不显示批量删除**，避免把「清空反推结果」误当成「删图」
 
