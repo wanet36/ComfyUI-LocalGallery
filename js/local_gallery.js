@@ -5511,15 +5511,27 @@ app.registerExtension({
       pagePrompts.append(promptMarquee);
 
       let dragSel = null; // 拖动中的临时状态
-      let marqueeRaf = 0; // 合并 pointermove，每帧最多画一次
       let swallowClickUntil = 0;
+
+      /* ComfyUI 缩放画布时，整个 DOM 面板是被 transform 缩放的：
+         rect 是屏幕尺寸、offsetWidth 是 CSS 尺寸，两者之比就是缩放系数。
+         鼠标给的是屏幕坐标，而 style.left/top 写的是 CSS 坐标，必须换算，
+         否则画布放大到 1.4 倍时框的右下角会比指针超出近 200px。 */
+      function elementScale(el) {
+        const r = el.getBoundingClientRect();
+        const w = el.offsetWidth;
+        if (!w || !r.width) return 1;
+        const s = r.width / w;
+        return s > 0.01 ? s : 1;
+      }
 
       // 坐标基准跟着框选对象走：图片用 canvas（marqueeBox 的定位父级），
       // 提示词用 pagePrompts（promptMarquee 的定位父级）
       function gridPoint(evt) {
         const host = dragSel && dragSel.kind === "prompt" ? pagePrompts : canvas;
         const rect = host.getBoundingClientRect();
-        return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+        const s = elementScale(host);
+        return { x: (evt.clientX - rect.left) / s, y: (evt.clientY - rect.top) / s };
       }
 
       /* 当前该滚的容器：提示词页要看停在哪一档（提示词 / 无匹配） */
@@ -5551,10 +5563,12 @@ app.registerExtension({
         const kind = onPrompts ? "prompt" : "image";
         const host = kind === "prompt" ? pagePrompts : canvas;
         const rect = host.getBoundingClientRect();
-        const sx = evt.clientX - rect.left;
-        const sy = evt.clientY - rect.top;
+        const scale = elementScale(host);
+        const sx = (evt.clientX - rect.left) / scale;
+        const sy = (evt.clientY - rect.top) / scale;
         dragSel = {
           kind,
+          scale,
           sx,
           sy,
           cx: sx,
@@ -5577,7 +5591,9 @@ app.registerExtension({
       function buildMarqueeCandidates() {
         const hostEl = dragSel.kind === "prompt" ? pagePrompts : canvas;
         const host = hostEl.getBoundingClientRect();
+        const scale = elementScale(hostEl);
         dragSel.hostRect = host;
+        dragSel.scale = scale;
         const scope = dragSel.kind === "prompt" ? activePromptScroll() : canvas;
         const sel = dragSel.kind === "prompt" ? ".lgb-prompt" : ".lgb-item, .lgb-lrow";
         dragSel.cands = [];
@@ -5586,10 +5602,11 @@ app.registerExtension({
           if (!r.width || !r.height) return;
           dragSel.cands.push({
             path: dom.dataset.path,
-            l: r.left - host.left,
-            t: r.top - host.top,
-            w: r.width,
-            h: r.height,
+            // 一律换成 CSS 坐标，才能和 style.left/top 直接比较
+            l: (r.left - host.left) / scale,
+            t: (r.top - host.top) / scale,
+            w: r.width / scale,
+            h: r.height / scale,
           });
         });
         dragSel.lastSig = "";
@@ -5658,20 +5675,21 @@ app.registerExtension({
         // 拖选期间别让浏览器顺手把卡片文字也选上
         evt.preventDefault();
         hideTip();
-        // pointermove 在高刷屏上每秒上百次，合并成每帧画一次
-        if (!marqueeRaf) marqueeRaf = requestAnimationFrame(paintMarquee);
+        // 直接同步画：挪框只是写 4 个 style，不读 DOM 就不会触发同步布局；
+        // 合并到 rAF 反而让框比指针晚一帧，快速拖动时终点明显咬不住鼠标
+        paintMarquee();
       }
 
       function paintMarquee() {
-        marqueeRaf = 0;
         if (!dragSel) return;
         // 宿主坐标在拖动开始时缓存好：这里若再读 rect，会因为刚写过 box 的 style
         // 而触发强制同步布局，框就又开始滞后了
         const rect =
           dragSel.hostRect ||
           (dragSel.kind === "prompt" ? pagePrompts : canvas).getBoundingClientRect();
-        const cx = dragSel.clientX - rect.left;
-        const cy = dragSel.clientY - rect.top;
+        const s = dragSel.scale || 1;
+        const cx = (dragSel.clientX - rect.left) / s;
+        const cy = (dragSel.clientY - rect.top) / s;
         dragSel.cx = cx;
         dragSel.cy = cy;
         const left = Math.min(dragSel.sx, dragSel.cx);
@@ -5728,10 +5746,6 @@ app.registerExtension({
         if (scrollRaf) {
           cancelAnimationFrame(scrollRaf);
           scrollRaf = 0;
-        }
-        if (marqueeRaf) {
-          cancelAnimationFrame(marqueeRaf);
-          marqueeRaf = 0;
         }
         const moved = !!dragSel?.moved;
         dragSel = null;
