@@ -4398,6 +4398,9 @@ app.registerExtension({
       if (pathWidget) {
         pathWidget.computeSize = () => [0, -4];
         pathWidget.draw = () => {};
+        // nodes 2.0 不看 draw/computeSize，按 widget.type 决定渲染；
+        // 和其他隐藏参数一样标成 hidden，否则路径会显示在节点最顶部。
+        pathWidget.type = "hidden";
         try {
           Object.defineProperty(pathWidget, "hidden", { value: true, writable: true });
         } catch (err) {
