@@ -5499,28 +5499,42 @@ app.registerExtension({
         // 正在看反推页时，改了选中就跟着换列表（跑任务中不打断）
         if (activeTab === "reverse" && !revRunning()) ensureReversePage();
       }
-      /* ---------------- 框选（左键拖出矩形批量选图） ---------------- */
+      /* ---------------- 框选（左键拖出矩形批量选图 / 选提示词） ---------------- */
       const marqueeBox = el("div", "lgb-marquee");
       marqueeBox.style.display = "none";
       canvas.append(marqueeBox);
 
+      // 提示词页不在 canvas 里，另起一块：基准是 pagePrompts，坐标不用管滚动偏移
+      const promptMarquee = el("div", "lgb-marquee");
+      promptMarquee.style.display = "none";
+      pagePrompts.style.position = "relative";
+      pagePrompts.append(promptMarquee);
+
       let dragSel = null; // 拖动中的临时状态
       let swallowClickUntil = 0;
 
-      // 坐标基准统一用 canvas 的 rect：它是 marqueeBox 的定位父级，
-      // 网格和列表都在它里面（列表模式下 grid 是 display:none，拿不到 rect）
+      // 坐标基准跟着框选对象走：图片用 canvas（marqueeBox 的定位父级），
+      // 提示词用 pagePrompts（promptMarquee 的定位父级）
       function gridPoint(evt) {
-        const rect = canvas.getBoundingClientRect();
+        const host = dragSel && dragSel.kind === "prompt" ? pagePrompts : canvas;
+        const rect = host.getBoundingClientRect();
         return { x: evt.clientX - rect.left, y: evt.clientY - rect.top };
+      }
+
+      /* 当前该滚的容器：提示词页要看停在哪一档（提示词 / 无匹配） */
+      function activePromptScroll() {
+        return state.promptMode === "orphans" ? orphanScroll : promptScroll;
       }
 
       function beginMarquee(evt) {
         if (evt.button !== 0) return;
-        if (activeTab !== "gallery" && activeTab !== "favorites") return;
+        const onPrompts = activeTab === "prompts";
+        if (activeTab !== "gallery" && activeTab !== "favorites" && !onPrompts) return;
         // 单选模式下不框选：一次只能留一张，拖出一片没有意义
         if (state.pickMode === "single") return;
-        // 只从缩略图区域起拖，工具栏 / 筛选栏 / 底栏上的拖动不算框选
-        const sc = gridScroll.getBoundingClientRect();
+        // 只从列表区域起拖，工具栏 / 筛选栏 / 底栏上的拖动不算框选
+        const scope = onPrompts ? activePromptScroll() : gridScroll;
+        const sc = scope.getBoundingClientRect();
         if (
           evt.clientX < sc.left ||
           evt.clientX > sc.right ||
@@ -5529,20 +5543,25 @@ app.registerExtension({
         ) {
           return;
         }
-        // 缩略图（.lgb-acts）/ 列表行（.acts）右侧那排小图标不参与框选
+        // 卡片右侧那排小图标（收藏 / 预览 / 删除 / 复制）不参与框选
         if (evt.target.closest?.(".lgb-acts, .acts")) return;
-        // 点在滚动条上（target 就是滚动容器本身）不算框选，否则一边拉条一边冒个矩形
-        if (evt.target === gridScroll) return;
-        const p = gridPoint(evt);
+        // 点在自己的滚动条上（target 就是滚动容器本身）不算框选
+        if (evt.target === scope) return;
+        const kind = onPrompts ? "prompt" : "image";
+        const host = kind === "prompt" ? pagePrompts : canvas;
+        const rect = host.getBoundingClientRect();
+        const sx = evt.clientX - rect.left;
+        const sy = evt.clientY - rect.top;
         dragSel = {
-          sx: p.x,
-          sy: p.y,
-          cx: p.x,
-          cy: p.y,
+          kind,
+          sx,
+          sy,
+          cx: sx,
+          cy: sy,
           clientX: evt.clientX,
           clientY: evt.clientY,
           add: evt.ctrlKey || evt.metaKey || evt.shiftKey,
-          base: new Map(state.selected),
+          base: new Map(kind === "prompt" ? state.promptSel : state.selected),
           moved: false,
         };
         // 一律用捕获阶段：ComfyUI 的画布逻辑会在冒泡途中截住指针事件
@@ -5553,6 +5572,10 @@ app.registerExtension({
 
       function applyMarquee(box) {
         if (!dragSel) return;
+        if (dragSel.kind === "prompt") {
+          applyPromptMarquee(box);
+          return;
+        }
         const rect = canvas.getBoundingClientRect();
         const hits = [];
         // 网格卡片和列表行都可能出现在 canvas 里（时间分组时还嵌在组容器里），
@@ -5585,6 +5608,42 @@ app.registerExtension({
         paintSelection();
       }
 
+      /* 提示词页的框选：命中只取当前那一档（提示词 / 无匹配）的行，写进 promptSel */
+      function applyPromptMarquee(box) {
+        const rect = pagePrompts.getBoundingClientRect();
+        const scope = activePromptScroll();
+        const hits = [];
+        scope.querySelectorAll(".lgb-prompt").forEach((dom) => {
+          const r = dom.getBoundingClientRect();
+          const left = r.left - rect.left;
+          const top = r.top - rect.top;
+          if (
+            left < box.right &&
+            left + r.width > box.left &&
+            top < box.bottom &&
+            top + r.height > box.top
+          ) {
+            hits.push(dom.dataset.path);
+          }
+        });
+        const next = dragSel.add ? new Map(dragSel.base) : new Map();
+        if (state.pickMode === "single") {
+          if (hits.length) next.set(hits[0], 0);
+          else next.clear();
+        } else {
+          hits.forEach((path) => {
+            if (path && !next.has(path)) next.set(path, next.size);
+          });
+        }
+        state.promptSel.clear();
+        // 保序写回：Map 的 key 顺序就是输出顺序
+        [...next.entries()]
+          .sort((a, b) => a[1] - b[1])
+          .forEach(([path, order], i) => state.promptSel.set(path, i));
+        state.promptLast = -1;
+        paintSelection();
+      }
+
       function onMarqueeMove(evt) {
         if (!dragSel) return;
         dragSel.clientX = evt.clientX;
@@ -5594,7 +5653,7 @@ app.registerExtension({
           if (Math.hypot(p.x - dragSel.sx, p.y - dragSel.sy) < 4) return;
           dragSel.moved = true;
           wrap.classList.add("lgb-marquee-on");
-          marqueeBox.style.display = "";
+          (dragSel.kind === "prompt" ? promptMarquee : marqueeBox).style.display = "";
           startEdgeScroll();
         }
         // 拖选期间别让浏览器顺手把卡片文字也选上
@@ -5612,10 +5671,11 @@ app.registerExtension({
         const top = Math.min(dragSel.sy, dragSel.cy);
         const width = Math.abs(dragSel.cx - dragSel.sx);
         const height = Math.abs(dragSel.cy - dragSel.sy);
-        marqueeBox.style.left = `${left}px`;
-        marqueeBox.style.top = `${top}px`;
-        marqueeBox.style.width = `${width}px`;
-        marqueeBox.style.height = `${height}px`;
+        const box = dragSel.kind === "prompt" ? promptMarquee : marqueeBox;
+        box.style.left = `${left}px`;
+        box.style.top = `${top}px`;
+        box.style.width = `${width}px`;
+        box.style.height = `${height}px`;
         applyMarquee({ left, top, right: left + width, bottom: top + height });
       }
 
@@ -5628,16 +5688,17 @@ app.registerExtension({
             scrollRaf = 0;
             return;
           }
-          const rect = gridScroll.getBoundingClientRect();
+          const scope = dragSel.kind === "prompt" ? activePromptScroll() : gridScroll;
+          const rect = scope.getBoundingClientRect();
           const y = dragSel.clientY;
           const EDGE = 26;
           let dy = 0;
           if (y < rect.top + EDGE) dy = -Math.min(18, Math.ceil((rect.top + EDGE - y) / 3));
           else if (y > rect.bottom - EDGE) dy = Math.min(18, Math.ceil((y - (rect.bottom - EDGE)) / 3));
           if (dy) {
-            const before = gridScroll.scrollTop;
-            gridScroll.scrollTop = before + dy;
-            if (gridScroll.scrollTop !== before) paintMarquee();
+            const before = scope.scrollTop;
+            scope.scrollTop = before + dy;
+            if (scope.scrollTop !== before) paintMarquee();
           }
           scrollRaf = requestAnimationFrame(tick);
         };
@@ -5653,6 +5714,7 @@ app.registerExtension({
         const moved = !!dragSel?.moved;
         dragSel = null;
         marqueeBox.style.display = "none";
+        promptMarquee.style.display = "none";
         wrap.classList.remove("lgb-marquee-on");
         if (!moved) return; // 没拖动 = 普通点击，交给卡片自己的处理
         // 松手后浏览器还会补一个 click，不吞掉会把刚框选的又取消回来
@@ -5662,6 +5724,17 @@ app.registerExtension({
 
       // 捕获阶段吞掉框选结束那一下 click（网格和列表都在 canvas 里，挂这里两边都管）
       canvas.addEventListener(
+        "click",
+        (evt) => {
+          if (performance.now() < swallowClickUntil) {
+            evt.preventDefault();
+            evt.stopPropagation();
+          }
+        },
+        true
+      );
+      // 提示词页不在 canvas 里，同一套吞噬要挂在它自己身上
+      pagePrompts.addEventListener(
         "click",
         (evt) => {
           if (performance.now() < swallowClickUntil) {
