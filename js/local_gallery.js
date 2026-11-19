@@ -5043,22 +5043,35 @@ app.registerExtension({
       });
       if (domWidget) domWidget.serialize = false;
 
-      // nodes 2.0：DOM 面板的 width/height 只在创建时写死一次，节点缩放后不跟着变，
-      // 视觉上就是「节点缩不下去、图片一直铺在面板里」。这里在 resize 时手动对齐。
+      // nodes 2.0：节点内是 CSS grid（.lg-node-widget），DOM 面板高度由内容撑开，
+      // 图片一多节点就跟着变高、怎么都缩不下去。这里把面板高度钉在节点尺寸上。
       function syncDomHostSize() {
-        // 面板在 addDOMWidget 时还没挂到 .dom-widget 下，必须每次现取
-        const host = domWidget?.element?.parentElement;
-        if (!host || !host.classList?.contains("dom-widget")) return;
+        const el = domWidget?.element;
+        if (!el) return;
+        // 只在 nodes 2.0 的结构里动手，旧版 LiteGraph 自己会算高度
+        if (!el.closest?.(".lg-node-widget")) return;
         const size = node.size || [790, 780];
-        host.style.width = `${Math.max(220, Math.round(size[0] - 20))}px`;
-        host.style.height = `${Math.max(120, Math.round(size[1] - 86))}px`;
+        el.style.height = `${Math.max(120, Math.round(size[1] - 86))}px`;
+        el.style.flex = "0 0 auto";
+        el.style.minHeight = "0";
+        el.style.overflow = "hidden";
       }
       const originalOnResize = node.onResize;
       node.onResize = function () {
         originalOnResize?.apply(this, arguments);
         syncDomHostSize();
       };
-      syncDomHostSize();
+      // 创建时 DOM 还没挂进 .lg-node-widget，等挂载后再钉高度
+      let syncTries = 0;
+      function ensureDomHostSize() {
+        const el = domWidget?.element;
+        if (el?.closest?.(".lg-node-widget")) {
+          syncDomHostSize();
+          return;
+        }
+        if (syncTries++ < 120) requestAnimationFrame(ensureDomHostSize);
+      }
+      ensureDomHostSize();
 
       /* ---------------- chips ---------------- */
       // 路径标签已搬进「浏览」弹窗（那里空间更宽，能看全路径），
