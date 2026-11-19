@@ -4730,6 +4730,65 @@ app.registerExtension({
       // （它内部会跳过 .file-browser 子树），不然我们切到英文又被它翻回中文
       const wrap = el("div", "lgb-wrap file-browser");
 
+      /* ---------------- 滚轮归属 ----------------
+         ComfyUI 把滚轮缩放挂在 document 的 capture 阶段，并且会 stopPropagation，
+         所以挂在 wrap 自己的监听根本收不到事件（实测 wrapCaptureHits = 0）。
+         事件路径上 window 在 document 之前，只有挂 window capture 才抢得到。
+         只吞落在本面板内的事件，面板外照常交给画布。 */
+      const SCROLLABLE_OVERFLOW = new Set(["auto", "scroll", "overlay"]);
+
+      function scrollHost(from) {
+        let node = from instanceof Element ? from : null;
+        while (node && node !== wrap.parentElement) {
+          if (SCROLLABLE_OVERFLOW.has(getComputedStyle(node).overflowY)) {
+            if (node.scrollHeight - node.clientHeight > 1) return node;
+          }
+          node = node.parentElement;
+        }
+        return null;
+      }
+
+      /* deltaMode：0=像素 1=行 2=页 */
+      function wheelPixels(evt) {
+        if (evt.deltaMode === 1) return evt.deltaY * 16;
+        if (evt.deltaMode === 2) return evt.deltaY * Math.max(wrap.clientHeight, 1);
+        return evt.deltaY;
+      }
+
+      /* 这两个区域靠滚轮做缩放，不能被下面的拦截吃掉 */
+      const WHEEL_ZOOM_ZONES = ".lgb-vstage, .lgb-cmp-stage";
+
+      /* 面板本体 + 自己的弹窗（设置 / 浏览 / 回收站）都算「我们的地盘」 */
+      function ownsWheel(target) {
+        const el = target instanceof Element ? target : null;
+        if (!el) return false;
+        if (wrap.isConnected && wrap.contains(el)) return true;
+        if (!el.closest(".lgb-overlay")) return false;
+        return !el.closest(WHEEL_ZOOM_ZONES);
+      }
+
+      function onPanelWheel(evt) {
+        if (!ownsWheel(evt.target)) return;
+        // 内层若有能滚的容器就滚它；滚到边界也停住，不把事件还给画布
+        const host = scrollHost(evt.target);
+        if (host) {
+          const max = host.scrollHeight - host.clientHeight;
+          host.scrollTop = Math.max(0, Math.min(max, host.scrollTop + wheelPixels(evt)));
+        }
+        evt.preventDefault();
+        evt.stopPropagation();
+      }
+
+      window.addEventListener("wheel", onPanelWheel, { passive: false, capture: true });
+
+      const dropPanelWheel = () =>
+        window.removeEventListener("wheel", onPanelWheel, { capture: true });
+      const prevRemoved = node.onRemoved;
+      node.onRemoved = function () {
+        dropPanelWheel();
+        return prevRemoved?.apply(this, arguments);
+      };
+
       let themeObserver = null;
       function applyTheme({ force = false } = {}) {
         const dark = isDarkTheme();
@@ -9301,20 +9360,8 @@ app.registerExtension({
 
         body.append(secFormat, secComp, secScale, secOut, secPreview);
 
-        /* 参数区滚轮：有溢出就自己滚，并且别让事件继续冒泡到画布
-           （否则滚轮滚到面板上会把 ComfyUI 画布放大缩小）。 */
-        body.addEventListener(
-          "wheel",
-          (evt) => {
-            if (Math.abs(evt.deltaY) < 1) return;
-            const max = body.scrollHeight - body.clientHeight;
-            if (max <= 0) return; // 没有溢出就让给页面（这里没有父级滚动）
-            evt.preventDefault();
-            evt.stopPropagation();
-            body.scrollTop = Math.max(0, Math.min(max, body.scrollTop + evt.deltaY));
-          },
-          { passive: false }
-        );
+        /* 参数区的滚轮交给 wrap 上的统一处理（见 lgb-wrap 的 wheel 监听），
+           这里不再单独挂监听，否则同一次滚动会被执行两遍。 */
 
         /* —— 进度（固定在页面底部） —— */
         const secRun = el("section", "lgb-set-sec lgb-conv-run");
