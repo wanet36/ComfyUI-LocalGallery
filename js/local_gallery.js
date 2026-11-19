@@ -5043,6 +5043,23 @@ app.registerExtension({
       });
       if (domWidget) domWidget.serialize = false;
 
+      // nodes 2.0：DOM 面板的 width/height 只在创建时写死一次，节点缩放后不跟着变，
+      // 视觉上就是「节点缩不下去、图片一直铺在面板里」。这里在 resize 时手动对齐。
+      function syncDomHostSize() {
+        // 面板在 addDOMWidget 时还没挂到 .dom-widget 下，必须每次现取
+        const host = domWidget?.element?.parentElement;
+        if (!host || !host.classList?.contains("dom-widget")) return;
+        const size = node.size || [790, 780];
+        host.style.width = `${Math.max(220, Math.round(size[0] - 20))}px`;
+        host.style.height = `${Math.max(120, Math.round(size[1] - 86))}px`;
+      }
+      const originalOnResize = node.onResize;
+      node.onResize = function () {
+        originalOnResize?.apply(this, arguments);
+        syncDomHostSize();
+      };
+      syncDomHostSize();
+
       /* ---------------- chips ---------------- */
       // 路径标签已搬进「浏览」弹窗（那里空间更宽，能看全路径），
       // 主面板这行只在收藏模式用：收藏夹分类。
