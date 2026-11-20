@@ -1240,6 +1240,12 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   -webkit-user-select: none;
   user-select: none;
 }
+/* 缩略图禁止浏览器原生拖拽：否则按住图片拖会变成拖图，pointercancel 直接把框选打断 */
+.lgb-canvas img,
+.lgb-lrow img {
+  -webkit-user-drag: none;
+  user-drag: none;
+}
 .lgb-col {
   flex: 1 1 0;
   min-width: 0;
@@ -5511,7 +5517,35 @@ app.registerExtension({
       pagePrompts.append(promptMarquee);
 
       let dragSel = null; // 拖动中的临时状态
-      let swallowClickUntil = 0;
+      // 框选松手后浏览器会补一次 click，只吞那一次（以前是 300ms 内全吞，点别的也点不动）
+      let swallowClicks = 0;
+      let swallowTimer = null;
+      let dragScrollEl = null;
+
+      /* 拖动期间容器一旦滚动（滚轮 / 触控板 / 自动翻边），内容整体位移，
+         候选矩形和宿主 top 都要同步减掉滚动量，否则框会停在原地、命中也会偏。
+         自动翻边不再自己算，统一走这里（幂等：scroll 事件再触发时 delta 为 0）。 */
+      function syncDragScroll() {
+        if (!dragSel || !dragScrollEl) return;
+        const top = dragScrollEl.scrollTop;
+        const left = dragScrollEl.scrollLeft;
+        const dy = top - (dragSel.lastScrollTop ?? top);
+        const dx = left - (dragSel.lastScrollLeft ?? left);
+        if (!dx && !dy) return;
+        dragSel.lastScrollTop = top;
+        dragSel.lastScrollLeft = left;
+        if (dragSel.cands) {
+          dragSel.cands.forEach((c) => {
+            c.t -= dy;
+            c.l -= dx;
+          });
+        }
+        if (dragSel.hostRect) {
+          dragSel.hostRect.top -= dy;
+          dragSel.hostRect.left -= dx;
+        }
+        paintMarquee();
+      }
 
       /* ComfyUI 缩放画布时，整个 DOM 面板是被 transform 缩放的：
          rect 是屏幕尺寸、offsetWidth 是 CSS 尺寸，两者之比就是缩放系数。
@@ -5616,6 +5650,11 @@ app.registerExtension({
           });
         });
         dragSel.lastSig = "";
+        // 滚动同步：从这一刻起，容器怎么滚，框都跟着
+        dragScrollEl = dragSel.kind === "prompt" ? activePromptScroll() : gridScroll;
+        dragSel.lastScrollTop = dragScrollEl.scrollTop;
+        dragSel.lastScrollLeft = dragScrollEl.scrollLeft;
+        dragScrollEl.addEventListener("scroll", syncDragScroll, { passive: true });
       }
 
       /* 命中判定：纯算术，顺序即 DOM 顺序 = 列表顺序 */
@@ -5735,14 +5774,7 @@ app.registerExtension({
           if (dy) {
             const before = scope.scrollTop;
             scope.scrollTop = before + dy;
-            const delta = scope.scrollTop - before;
-            if (delta) {
-              // 滚动让内容整体上移：候选的 top 和宿主的 top 都要跟着减，
-              // 否则框会停在原地（鼠标在走、框不动），越滚偏得越多
-              if (dragSel.cands) dragSel.cands.forEach((c) => { c.t -= delta; });
-              if (dragSel.hostRect) dragSel.hostRect.top -= delta;
-              paintMarquee();
-            }
+            if (scope.scrollTop !== before) syncDragScroll();
           }
           scrollRaf = requestAnimationFrame(tick);
         };
@@ -5751,6 +5783,10 @@ app.registerExtension({
 
       function endMarquee() {
         window.removeEventListener("pointermove", onMarqueeMove, { capture: true });
+        if (dragScrollEl) {
+          dragScrollEl.removeEventListener("scroll", syncDragScroll);
+          dragScrollEl = null;
+        }
         if (scrollRaf) {
           cancelAnimationFrame(scrollRaf);
           scrollRaf = 0;
@@ -5761,33 +5797,26 @@ app.registerExtension({
         promptMarquee.style.display = "none";
         wrap.classList.remove("lgb-marquee-on");
         if (!moved) return; // 没拖动 = 普通点击，交给卡片自己的处理
-        // 松手后浏览器还会补一个 click，不吞掉会把刚框选的又取消回来
-        swallowClickUntil = performance.now() + 300;
+        // 松手后浏览器还会补一个 click，不吞掉会把刚框选的又取消回来。
+        // 只吞一次并给个兜底超时：万一浏览器没补，也不会把用户下一次真实点击吃掉
+        swallowClicks = 1;
+        clearTimeout(swallowTimer);
+        swallowTimer = setTimeout(() => {
+          swallowClicks = 0;
+        }, 300);
         commitSelection();
       }
 
       // 捕获阶段吞掉框选结束那一下 click（网格和列表都在 canvas 里，挂这里两边都管）
-      canvas.addEventListener(
-        "click",
-        (evt) => {
-          if (performance.now() < swallowClickUntil) {
-            evt.preventDefault();
-            evt.stopPropagation();
-          }
-        },
-        true
-      );
+      const swallowOneClick = (evt) => {
+        if (swallowClicks <= 0) return;
+        swallowClicks -= 1;
+        evt.preventDefault();
+        evt.stopPropagation();
+      };
+      canvas.addEventListener("click", swallowOneClick, true);
       // 提示词页不在 canvas 里，同一套吞噬要挂在它自己身上
-      pagePrompts.addEventListener(
-        "click",
-        (evt) => {
-          if (performance.now() < swallowClickUntil) {
-            evt.preventDefault();
-            evt.stopPropagation();
-          }
-        },
-        true
-      );
+      pagePrompts.addEventListener("click", swallowOneClick, true);
       // ComfyUI 在 document 上处理画布指针事件，pointerdown 传到 gridScroll 之前就被拦了，
       // 所以按下必须在 document 的捕获阶段接（pointermove/up 能正常冒泡）
       document.addEventListener(
