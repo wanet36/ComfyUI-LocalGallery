@@ -5522,8 +5522,17 @@ app.registerExtension({
       let swallowTimer = null;
       let dragScrollEl = null;
 
-      /* 拖动期间容器一旦滚动（滚轮 / 触控板 / 自动翻边），内容整体位移，
-         候选矩形和宿主 top 都要同步减掉滚动量，否则框会停在原地、命中也会偏。
+      /* 拖动期间容器一旦滚动（滚轮 / 触控板 / 自动翻边），下面两类坐标要分开处理：
+
+         1）宿主（canvas / pagePrompts）的屏幕矩形：缓存值只用于「指针 → 宿主坐标」换算，
+            必须跟着宿主真实位置走。这里直接重读一次 rect（滚轮事件每帧最多一次，
+            不是每个元素一次，不会像逐项 getBoundingClientRect 那样拖慢拖动）。
+            以前是 `top -= dy`，把屏幕像素当成 CSS 像素扣，画布缩放 ≠ 1 时框就会跑偏：
+            缩到 75% 滚 348px，框底比指针低 87px（正好 348 × (1-0.75)），也就是「框超出去」。
+
+         2）候选矩形：存的是宿主坐标系，滚宿主父级时它们根本不动（再减 dy 就把命中整体挪偏），
+            只有滚动容器在宿主内部（提示词页 promptScroll 在 pagePrompts 里）时才整体位移。
+
          自动翻边不再自己算，统一走这里（幂等：scroll 事件再触发时 delta 为 0）。 */
       function syncDragScroll() {
         if (!dragSel || !dragScrollEl) return;
@@ -5534,15 +5543,18 @@ app.registerExtension({
         if (!dx && !dy) return;
         dragSel.lastScrollTop = top;
         dragSel.lastScrollLeft = left;
-        if (dragSel.cands) {
+        // 滚动容器在宿主内部：卡片相对宿主整体位移（宿主自己没动）
+        if (dragSel.candsScroll && dragSel.cands) {
           dragSel.cands.forEach((c) => {
             c.t -= dy;
             c.l -= dx;
           });
         }
-        if (dragSel.hostRect) {
-          dragSel.hostRect.top -= dy;
-          dragSel.hostRect.left -= dx;
+        // 宿主自己跟着滚了（滚动容器在它外面）：重读真实屏幕矩形
+        if (dragSel.hostEl && dragSel.hostRect) {
+          const r = dragSel.hostEl.getBoundingClientRect();
+          dragSel.hostRect.top = r.top;
+          dragSel.hostRect.left = r.left;
         }
         paintMarquee();
       }
@@ -5634,7 +5646,13 @@ app.registerExtension({
           height: host.height,
         };
         dragSel.scale = scale;
+        dragSel.hostEl = hostEl;
         const scope = dragSel.kind === "prompt" ? activePromptScroll() : canvas;
+        // 真正会滚的容器（提示词页要看停在哪一档）
+        const scroller = dragSel.kind === "prompt" ? activePromptScroll() : gridScroll;
+        // 滚动容器在宿主内部时，滚动是「卡片在宿主坐标里整体位移」；
+        // 在宿主外面时，滚动的是宿主自己，候选坐标不变（见 syncDragScroll）
+        dragSel.candsScroll = hostEl.contains(scroller);
         const sel = dragSel.kind === "prompt" ? ".lgb-prompt" : ".lgb-item, .lgb-lrow";
         dragSel.cands = [];
         scope.querySelectorAll(sel).forEach((dom) => {
@@ -5651,7 +5669,7 @@ app.registerExtension({
         });
         dragSel.lastSig = "";
         // 滚动同步：从这一刻起，容器怎么滚，框都跟着
-        dragScrollEl = dragSel.kind === "prompt" ? activePromptScroll() : gridScroll;
+        dragScrollEl = scroller;
         dragSel.lastScrollTop = dragScrollEl.scrollTop;
         dragSel.lastScrollLeft = dragScrollEl.scrollLeft;
         dragScrollEl.addEventListener("scroll", syncDragScroll, { passive: true });
