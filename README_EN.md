@@ -270,6 +270,7 @@ Open it with the ⚙ button in the path bar. Four groups:
 |---|---|
 | **Appearance** | Interface language (中文 / English), theme (follow ComfyUI / light / dark), show descriptions, **columns per row** slider (moved here from the tab bar) |
 | **Favorites** | Export target folder + export button |
+| **Prompt output** | Excluded tags (`exclude_tags` in `config.json`): stripped from the prompts the node outputs; one per line or comma separated, `*` wildcards supported |
 | **Runtime** | Thumbnail size / quality, scan limit, max image side, recent folders, trash folder, allow deleting, auto-pick when empty |
 | **Advanced** | Allowed roots (whitelist); empty = no restriction |
 
@@ -360,7 +361,8 @@ Every field is also editable from the Settings panel; editing the JSON by hand w
     "enabled": false,
     "limit": 4,
     "recursive": false
-  }
+  },
+  "exclude_tags": []              // tags stripped from output; case-insensitive, * wildcards ok
 }
 ```
 
@@ -371,7 +373,7 @@ Every field is also editable from the Settings panel; editing the JSON by hand w
 | Output | Type | Notes |
 |---|---|---|
 | `images` | IMAGE (list) | Each selected image, `[1,H,W,3]` float32, 0–1 |
-| `prompts` | STRING (list) | Prompt for each image, read at execution time |
+| `prompts` | STRING (list) | Prompt for each image, read at execution time, then stripped of the **excluded tags** set in Settings (files on disk are untouched) |
 | `filenames` | STRING (list) | File name **without extension**; **follows the active tab**: Gallery / Favorites give image names, the Prompts tab (including orphans) gives prompt names |
 
 `OUTPUT_IS_LIST = (True, True, True)`, same semantics as the original `DanbooruGalleryNode`: downstream nodes run **once per list item** (wired to KSampler, it generates every image).

@@ -15,6 +15,7 @@ import threading
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
+from fnmatch import fnmatchcase
 from pathlib import Path
 
 from .prompt_reader import (
@@ -50,6 +51,8 @@ DEFAULT_CONFIG = {
         "limit": 4,
         "recursive": False,
     },
+    # 输出提示词时剔掉的 tag（逗号切分逐条比，忽略大小写，支持 * 通配）
+    "exclude_tags": [],
 }
 
 # 设置面板能改的字段 -> (中文名, 最小值/校验) ；只写白名单里的键
@@ -160,6 +163,30 @@ def save_config(patch: dict) -> dict:
         clean["allowed_roots"] = roots
         changed.append("allowed_roots")
 
+    if "exclude_tags" in patch:
+        raw = patch.get("exclude_tags")
+        if isinstance(raw, str):
+            raw = re.split(r"[\r\n,，;；]+", raw)
+        if not isinstance(raw, list):
+            raise ValueError("排除 tag 要是标签数组或按行 / 逗号分隔的文本")
+        tags: list[str] = []
+        seen: set[str] = set()
+        for item in raw:
+            text = str(item or "").strip()
+            if not text:
+                continue
+            if len(text) > 120:
+                raise ValueError(f"排除 tag 最多 120 个字：{text[:24]}…")
+            key = text.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            tags.append(text)
+        if len(tags) > 200:
+            raise ValueError("排除 tag 最多 200 条")
+        clean["exclude_tags"] = tags
+        changed.append("exclude_tags")
+
     if "auto_select_when_empty" in patch:
         raw = patch.get("auto_select_when_empty") or {}
         if not isinstance(raw, dict):
@@ -193,6 +220,58 @@ def save_config(patch: dict) -> dict:
 def allowed_roots() -> list[str]:
     roots = load_config().get("allowed_roots") or []
     return [str(Path(r).expanduser().resolve()) for r in roots if str(r).strip()]
+
+
+# --------------------------------------------------------------------------- #
+# 输出提示词：剔除指定 tag
+# --------------------------------------------------------------------------- #
+_TAG_COMMA = re.compile(r"(?<=[,，])")
+_TAG_EDGE = " \t.;。；:："
+
+
+def exclude_tag_patterns() -> list[str]:
+    """当前配置里的排除规则（小写），空列表表示不过滤。"""
+    tags = load_config().get("exclude_tags") or []
+    return [str(t).strip().lower() for t in tags if str(t).strip()]
+
+
+def _tag_excluded(tag: str, patterns: list[str]) -> bool:
+    for pat in patterns:
+        if "*" in pat or "?" in pat:
+            if fnmatchcase(tag, pat):
+                return True
+        elif tag == pat:
+            return True
+    return False
+
+
+def apply_exclude_tags(text: str) -> str:
+    """按 config 的 exclude_tags 从提示词里剔掉命中的 tag。
+
+    - 逐行处理，只按中英文逗号切分，换行和其余排版原样保留
+    - 比较时忽略大小写、首尾空白和句末标点（`masterpiece.` 也能命中 `masterpiece`）
+    - 规则支持 `*` / `?` 通配（例如 `*quality*`）
+    - 全部被剔掉时返回空串，节点就输出空提示词
+    """
+    if not text:
+        return text
+    patterns = exclude_tag_patterns()
+    if not patterns:
+        return text
+
+    out_lines: list[str] = []
+    for line in str(text).replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        if not line.strip():
+            out_lines.append(line)
+            continue
+        kept: list[str] = []
+        for part in _TAG_COMMA.split(line):
+            body = part.strip().rstrip(",，").strip()
+            if body and _tag_excluded(body.strip(_TAG_EDGE).lower(), patterns):
+                continue
+            kept.append(part)
+        out_lines.append("".join(kept).rstrip(" \t,，"))
+    return "\n".join(out_lines).strip()
 
 
 def is_path_allowed(path: Path) -> bool:

@@ -15,7 +15,9 @@ import torch
 from PIL import Image, ImageOps
 
 from .gallery import (
+    apply_exclude_tags,
     describe_paths,
+    exclude_tag_patterns,
     is_path_allowed,
     load_config,
     resolve_input_paths,
@@ -180,6 +182,8 @@ class LocalGalleryBrowser:
         items = parse_selection(selection_data)
         prompt_items = parse_prompt_selection(selection_data)
         signature = [folder_path or "", extra_paths or ""]
+        # 改了「排除 tag」也要重跑，否则输出还是旧提示词
+        signature.append("strip:" + "|".join(exclude_tag_patterns()))
         # 页签决定了 filenames 用谁的名字，切页签也要重跑
         signature.append("from:" + parse_filename_source(selection_data))
         # 提示词页的选中项也算输入变化（只选了提示词、没选图时也能触发重跑）
@@ -247,7 +251,8 @@ class LocalGalleryBrowser:
                 tensor = PLACEHOLDER
 
             images.append(tensor)
-            prompts.append(prompt)
+            # 输出前按设置剔掉不要的 tag（不动磁盘上的提示词文件）
+            prompts.append(apply_exclude_tags(prompt))
             # 只给主文件名，不带扩展名（下游拼前缀 / 命名更省一步）
             filenames.append(Path(path).stem)
 
@@ -273,7 +278,7 @@ class LocalGalleryBrowser:
                     logger.warning(f"[LocalGallery] 提示词读取失败 {path}: {exc}")
                 if not text:
                     text = item.get("prompt") or ""
-                picked_prompts.append(text)
+                picked_prompts.append(apply_exclude_tags(text))
                 picked_names.append(Path(path).stem)
             if picked_prompts:
                 prompts = picked_prompts

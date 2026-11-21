@@ -272,6 +272,7 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 |---|---|
 | **外观** | 界面语言（中文 / English）、主题（跟随 ComfyUI / 浅色 / 深色）、显示附加说明、**每行张数**滑块（原本在顶栏，现收进这里） |
 | **收藏** | 导出目标文件夹 + 导出按钮 |
+| **输出提示词** | 排除 tag：写进 `config.json` 的 `exclude_tags`，输出时从提示词里剔掉（一行一个或逗号分隔，支持 `*` 通配） |
 | **运行参数** | 缩略图尺寸 / 质量、扫描上限、单图最大边、最近浏览、回收站目录、允许删除、空选兜底 |
 | **高级** | 允许访问的根目录（白名单），留空 = 不限制 |
 
@@ -362,7 +363,8 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
     "enabled": false,
     "limit": 4,
     "recursive": false
-  }
+  },
+  "exclude_tags": []              // 输出时剔掉的 tag，忽略大小写，支持 * 通配
 }
 ```
 
@@ -373,7 +375,7 @@ git clone https://github.com/wanet36/ComfyUI-LocalGallery.git
 | 输出 | 类型 | 说明 |
 |---|---|---|
 | `images` | IMAGE（列表） | 每张选中图片，`[1,H,W,3]` float32，0~1 |
-| `prompts` | STRING（列表） | 与图片一一对应的提示词（执行时按同名文件现读） |
+| `prompts` | STRING（列表） | 与图片一一对应的提示词（执行时按同名文件现读，再按设置里的**排除 tag** 剔除；磁盘上的文件不动） |
 | `filenames` | STRING（列表） | 主文件名，**不含扩展名**；**跟着当前页签走**：图库 / 收藏页给图片名，提示词页（含无匹配档）给提示词名 |
 
 `OUTPUT_IS_LIST = (True, True, True)`，和原 `DanbooruGalleryNode` 一致：下游节点会**按列表逐条执行**（接 KSampler 会为每张图各跑一次）。

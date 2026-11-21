@@ -3995,6 +3995,10 @@ const I18N_EN = {
   "回收站目录": "Trash folder",
   "允许删除（移到回收站）": "Allow deleting (move to trash)",
   "空选兜底": "Auto-pick when empty",
+  "输出提示词": "Prompt output",
+  "排除 tag": "Excluded tags",
+  "每行一个 tag，也可以用逗号分隔，例如 masterpiece / *watermark*": "One tag per line, or comma separated — e.g. masterpiece / *watermark*",
+  "这些 tag 会从节点输出的 prompts 里剔掉（磁盘上的 .txt 不动）。按逗号逐条比，忽略大小写和句末标点，支持 * 通配（如 *quality*）；一行一个或逗号分隔都行。改完点底部「保存运行参数」生效。": "These tags are stripped from the prompts the node outputs (the .txt files on disk are untouched). Matching is per comma-separated tag, case-insensitive, ignoring trailing punctuation; * and ? wildcards work (e.g. *quality*). One per line or comma separated. Click Save settings below to apply.",
   "启用": "Enable",
   "缩略图尺寸 = 网格缩略图的长边像素（越大越清晰，磁盘缓存也越大）；质量 40–95，数值越高质量越好、体积越大。扫描上限 = 一次最多读多少个文件，超出会截断；单图最大边 = 超过这个尺寸的图在节点执行时跳过（省显存），不影响预览。": "Thumbnail size = long edge in px (larger is sharper, more disk cache). Quality 40–95. Scan limit = max files per scan. Max image side = images larger than this are skipped when the node runs (saves VRAM); preview is unaffected.",
   "保存运行参数": "Save settings",
@@ -4664,6 +4668,7 @@ app.registerExtension({
         allow_delete: true,
         recent_limit: 12,
         auto_select_when_empty: { enabled: false, limit: 4, recursive: false },
+        exclude_tags: [],
       };
       const cfg = JSON.parse(JSON.stringify(CONFIG_DEFAULTS));
       cfg.trash_dir_effective = "";
@@ -9184,6 +9189,26 @@ app.registerExtension({
           rowWith(btnExportFav, favMsg)
         );
 
+        /* —— 输出提示词：从节点输出里剔掉指定 tag —— */
+        const secPrompt = el("section", "lgb-set-sec");
+        const excludeInput = document.createElement("textarea");
+        excludeInput.className = "lgb-set-input";
+        excludeInput.rows = 4;
+        excludeInput.spellcheck = false;
+        setPh(excludeInput, "每行一个 tag，也可以用逗号分隔，例如 masterpiece / *watermark*");
+        excludeInput.value = (cfg.exclude_tags || []).join("\n");
+        const excludeRow = el("div", "lgb-set-row");
+        excludeRow.append(el("span", "lb wide", "排除 tag"), excludeInput);
+        secPrompt.append(
+          el("div", "ttl", "输出提示词"),
+          excludeRow,
+          el(
+            "p",
+            "desc",
+            "这些 tag 会从节点输出的 prompts 里剔掉（磁盘上的 .txt 不动）。按逗号逐条比，忽略大小写和句末标点，支持 * 通配（如 *quality*）；一行一个或逗号分隔都行。改完点底部「保存运行参数」生效。"
+          )
+        );
+
         /* —— 运行参数：对应节点目录的 config.json —— */
         const secCfg = el("section", "lgb-set-sec");
         const cfgInputs = {};
@@ -9302,6 +9327,7 @@ app.registerExtension({
               limit: autoLimit.value,
               recursive: chkAutoSub.input.checked,
             },
+            exclude_tags: excludeInput.value,
           };
         }
 
@@ -9317,6 +9343,7 @@ app.registerExtension({
           autoLimit.value = String(auto.limit || 4);
           chkAutoSub.input.checked = !!auto.recursive;
           rootsInput.value = (source.allowed_roots || []).join("\n");
+          excludeInput.value = (source.exclude_tags || []).join("\n");
           // 存模板 + 变量，切语言时 applyLangNodes 会按新语言重拼
           const eff = cfg.trash_dir_effective || "—";
           trashPath.dataset.i18nStatus = "当前生效：{path}";
@@ -9417,7 +9444,7 @@ app.registerExtension({
           )
         );
 
-        body.append(secBrowse, secTheme, secFav, secCfg, secAdv, cfgFoot);
+        body.append(secBrowse, secTheme, secFav, secPrompt, secCfg, secAdv, cfgFoot);
         box.append(headEl, body);
         overlay.append(box);
         document.body.appendChild(overlay);
