@@ -37,6 +37,7 @@ const CSS = `
 .lgb-wrap,
 .lgb-tip,
 .lgb-overlay,
+.lgb-hoverpic,
 .lgb-sortmenu {
   --lg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
@@ -83,6 +84,7 @@ const CSS = `
 .lgb-wrap[data-theme="light"],
 .lgb-tip[data-theme="light"],
 .lgb-overlay[data-theme="light"],
+.lgb-hoverpic[data-theme="light"],
 .lgb-sortmenu[data-theme="light"] {
   --lg-bg: #f6f7f9;
   --lg-elev: #ffffff;
@@ -1731,6 +1733,35 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   font-family: var(--lg-mono);
   font-size: 10px;
   word-break: break-all;
+}
+
+/* ========================================================== 列表悬停放大图 */
+/* 列表模式下鼠标停在缩略图上，旁边浮一张大图。pointer-events: none，不抢点击、
+   不参与框选；层级压在浮层（99999）下面，打开大图预览时不会浮在上面 */
+.lgb-hoverpic {
+  position: fixed;
+  z-index: 99990;
+  display: none;
+  padding: 5px;
+  border-radius: var(--lg-r-lg);
+  background: var(--lg-elev);
+  border: 1px solid var(--lg-line-2);
+  box-shadow: var(--lg-shadow-2);
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.975);
+  transition: opacity 110ms ease, transform 110ms ease;
+}
+.lgb-hoverpic.on {
+  opacity: 1;
+  transform: none;
+}
+.lgb-hoverpic img {
+  display: block;
+  max-width: min(380px, 34vw);
+  max-height: min(54vh, 460px);
+  border-radius: calc(var(--lg-r-lg) - 3px);
+  background: var(--lg-sunken);
 }
 
 /* ================================================================ 浮层 */
@@ -4827,6 +4858,9 @@ app.registerExtension({
         document.querySelectorAll(".lgb-overlay").forEach((node) => {
           node.dataset.theme = name;
         });
+        document.querySelectorAll(".lgb-hoverpic").forEach((node) => {
+          node.dataset.theme = name;
+        });
         // 节点底色跟着走，避免浅色模式下留一块深色板
         node.color = dark ? "#23262e" : "#e6eaf1";
         node.bgcolor = dark ? "#17181c" : "#f6f7f9";
@@ -5947,6 +5981,70 @@ app.registerExtension({
       const tip = el("div", "lgb-tip");
       document.body.appendChild(tip);
 
+      /* 列表模式：鼠标停在缩略图上，旁边浮一张大图。
+         纯只读预览（pointer-events: none），不参与选中、不挡框选 */
+      const hoverPic = el("div", "lgb-hoverpic");
+      const hoverPicImg = document.createElement("img");
+      hoverPicImg.draggable = false;
+      hoverPicImg.decoding = "async";
+      hoverPic.appendChild(hoverPicImg);
+      document.body.appendChild(hoverPic);
+      const HOVER_PIC_SIZE = 720;
+      let hoverPicTimer = null;
+      let hoverPicRow = null;
+
+      function hideHoverPic() {
+        if (hoverPicTimer) {
+          clearTimeout(hoverPicTimer);
+          hoverPicTimer = null;
+        }
+        hoverPicRow = null;
+        hoverPic.classList.remove("on");
+        hoverPic.style.display = "none";
+      }
+
+      /* 优先贴到面板外侧（右 → 左），这样不会盖住列表本身；
+         两侧都放不下才退回面板里、行的右边。垂直方向对齐行的中线并夹在视口内 */
+      function placeHoverPic(rowRect) {
+        const pad = 12;
+        const gap = 14;
+        const box = hoverPic.getBoundingClientRect();
+        const panel = wrap.getBoundingClientRect();
+        let x;
+        if (panel.right + gap + box.width + pad <= window.innerWidth) {
+          x = panel.right + gap;
+        } else if (panel.left - gap - box.width >= pad) {
+          x = panel.left - gap - box.width;
+        } else {
+          // 面板顶到屏幕边：退到面板里，但尽量贴右边，少挡缩略图和文件名
+          x = Math.max(rowRect.right + gap, panel.right - box.width - 18);
+          if (x + box.width + pad > window.innerWidth) x = rowRect.left - box.width - gap;
+          x = Math.min(Math.max(pad, x), Math.max(pad, window.innerWidth - box.width - pad));
+        }
+        let y = rowRect.top + rowRect.height / 2 - box.height / 2;
+        y = Math.min(Math.max(pad, y), Math.max(pad, window.innerHeight - box.height - pad));
+        hoverPic.style.left = `${Math.round(x)}px`;
+        hoverPic.style.top = `${Math.round(y)}px`;
+      }
+
+      function paintHoverPic() {
+        if (!hoverPicRow || !hoverPicRow.isConnected) return;
+        hoverPic.style.display = "block";
+        placeHoverPic(hoverPicRow.getBoundingClientRect());
+        hoverPic.classList.add("on");
+      }
+
+      // 加载完再亮：第一帧图还没有尺寸，先定位会贴到错的地方
+      hoverPicImg.addEventListener("load", () => {
+        if (!hoverPicRow) return;
+        if (hoverPicImg.dataset.path !== hoverPicRow.dataset.path) return;
+        paintHoverPic();
+      });
+
+      // 一按下（选中 / 框选 / 点按钮）就收起；视口尺寸变了也收起，免得停在半空
+      wrap.addEventListener("pointerdown", hideHoverPic, true);
+      window.addEventListener("resize", hideHoverPic);
+
       // 浮窗建好后再套主题（applyTheme 会同步浮窗自身的令牌）
       applyTheme();
       themeAppliers.add(applyTheme);
@@ -6039,6 +6137,7 @@ app.registerExtension({
         "scroll",
         () => {
           hideTip();
+          hideHoverPic();
           maybeLoadMore();
         },
         { passive: true }
@@ -6086,6 +6185,7 @@ app.registerExtension({
       function openViewer(item) {
         if (!item) return;
         hideTip(); // 悬停提示的层级比遮罩高，不收起会浮在大图上面
+        hideHoverPic();
         // 在当前列表里翻页（收藏页就是收藏列表），不用关掉重开
         let list = visibleItems();
         let index = list.findIndex((entry) => entry.path === item.path);
@@ -6564,6 +6664,7 @@ app.registerExtension({
       }
 
       function switchTab(name) {
+        hideHoverPic();
         activeTab = ["favorites", "prompts", "reverse", "convert", "compare"].includes(name)
           ? name
           : "gallery";
@@ -11134,6 +11235,24 @@ app.registerExtension({
         });
         pic.append(img);
 
+        // 悬停缩略图 → 旁边浮一张大图（列表模式专属；拖动框选时不弹）
+        pic.dataset.path = item.path;
+        pic.addEventListener("mouseenter", () => {
+          if (dragSel) return;
+          hideHoverPic();
+          hoverPicRow = pic;
+          hoverPicImg.dataset.path = item.path;
+          const url = buildUrl("/local_gallery/thumb", { path: item.path, size: HOVER_PIC_SIZE });
+          if (hoverPicImg.getAttribute("src") !== url) hoverPicImg.src = url;
+          hoverPicTimer = setTimeout(() => {
+            hoverPicTimer = null;
+            if (hoverPicRow !== pic) return;
+            // 已经缓存过的图不会再触发 load，这里直接亮出来
+            if (hoverPicImg.complete && hoverPicImg.naturalWidth) paintHoverPic();
+          }, 150);
+        });
+        pic.addEventListener("mouseleave", hideHoverPic);
+
         const mid = el("div", "mid");
         const nm = el("div", "nm");
         nm.append(
@@ -11207,6 +11326,7 @@ app.registerExtension({
 
       function renderList(items, reset) {
         if (reset) {
+          hideHoverPic();
           listBox.replaceChildren();
           state.rendered = 0;
         }
@@ -11222,6 +11342,7 @@ app.registerExtension({
       function setViewMode(mode, { persist = true, rerender = true } = {}) {
         state.view = mode === "list" ? "list" : "grid";
         const isList = state.view === "list";
+        hideHoverPic();
         grid.style.display = isList ? "none" : "";
         listBox.style.display = isList ? "" : "none";
         syncViewSwitch();
