@@ -6055,6 +6055,7 @@ app.registerExtension({
       const HOVER_PIC_SIZE = 720;
       let hoverPicTimer = null;
       let hoverPicRow = null;
+      let hoverPicAnchorY = null; // 非空时按这个屏幕 y 对齐（提示词卡片用）
 
       const promptBox = el("div", "lgb-promptbox");
       const promptBoxHd = el("div", "hd");
@@ -6069,8 +6070,9 @@ app.registerExtension({
 
       /* 两块浮层共用定位：优先贴到面板外侧（右 → 左），不盖住列表本身；
          两侧都放不下才退回面板里、贴右边。垂直方向对齐行的中线并夹在视口内。
-         preferLeft：大图预览优先放左边（提示词浮框仍优先右边） */
-      function placeAside(boxEl, rowRect, preferLeft = false) {
+         preferLeft：大图预览优先放左边（提示词浮框仍优先右边）
+         centerY：给提示词卡片用 —— 卡片可能很高，按鼠标进入时的位置对齐，别跑到卡片正中 */
+      function placeAside(boxEl, rowRect, preferLeft = false, centerY = null) {
         const pad = 12;
         const gap = 14;
         const box = boxEl.getBoundingClientRect();
@@ -6088,7 +6090,8 @@ app.registerExtension({
           x = Math.max(rowRect.right + gap, panel.right - box.width - 18);
           x = Math.max(pad, Math.min(x, window.innerWidth - box.width - pad));
         }
-        let y = rowRect.top + rowRect.height / 2 - box.height / 2;
+        const midY = centerY === null ? rowRect.top + rowRect.height / 2 : centerY;
+        let y = midY - box.height / 2;
         y = Math.min(Math.max(pad, y), Math.max(pad, window.innerHeight - box.height - pad));
         boxEl.style.left = `${Math.round(x)}px`;
         boxEl.style.top = `${Math.round(y)}px`;
@@ -6100,6 +6103,7 @@ app.registerExtension({
           hoverPicTimer = null;
         }
         hoverPicRow = null;
+        hoverPicAnchorY = null;
         hoverPic.classList.remove("on");
         hoverPic.style.display = "none";
       }
@@ -6122,8 +6126,26 @@ app.registerExtension({
       function paintHoverPic() {
         if (!hoverPicRow || !hoverPicRow.isConnected) return;
         hoverPic.style.display = "block";
-        placeAside(hoverPic, hoverPicRow.getBoundingClientRect(), true);
+        placeAside(hoverPic, hoverPicRow.getBoundingClientRect(), true, hoverPicAnchorY);
         hoverPic.classList.add("on");
+      }
+
+      /* 悬停某块区域 → 旁边浮出它的图。列表行用缩略图元素做宿主，
+         提示词卡片用整张卡片；anchorY 传进来就按鼠标那一点对齐（卡片很长时不会跑到正中） */
+      function armHoverPic(rowEl, path, anchorY = null) {
+        if (!rowEl || !path || dragSel) return;
+        hideHoverPic();
+        hoverPicRow = rowEl;
+        hoverPicAnchorY = Number.isFinite(anchorY) ? anchorY : null;
+        hoverPicImg.dataset.path = path;
+        const url = buildUrl("/local_gallery/thumb", { path, size: HOVER_PIC_SIZE });
+        if (hoverPicImg.getAttribute("src") !== url) hoverPicImg.src = url;
+        hoverPicTimer = setTimeout(() => {
+          hoverPicTimer = null;
+          if (hoverPicRow !== rowEl) return;
+          // 已经缓存过的图不会再触发 load，这里直接亮出来
+          if (hoverPicImg.complete && hoverPicImg.naturalWidth) paintHoverPic();
+        }, 150);
       }
 
       /* 整段提示词：行里只有前 14 个标签，这里给全文（换行保留） */
@@ -7011,6 +7033,9 @@ app.registerExtension({
           );
           const body = el("div", "lgb-prompt-body");
           card.append(head, body);
+          // 悬停提示词正文 → 左边浮出这张图的预览（页面上的卡片本来就对应一张图）
+          body.addEventListener("mouseenter", (evt) => armHoverPic(card, item.path, evt.clientY));
+          body.addEventListener("mouseleave", hideHoverPic);
           // 点卡片 = 选中这条提示词（只输出提示词，不输出图片）
           card.addEventListener("click", (evt) => {
             if (cp.contains?.(evt.target) || del.contains?.(evt.target)) return;
@@ -11350,20 +11375,7 @@ app.registerExtension({
 
         // 悬停缩略图 → 旁边浮一张大图（列表模式专属；拖动框选时不弹）
         pic.dataset.path = item.path;
-        pic.addEventListener("mouseenter", () => {
-          if (dragSel) return;
-          hideHoverPic();
-          hoverPicRow = pic;
-          hoverPicImg.dataset.path = item.path;
-          const url = buildUrl("/local_gallery/thumb", { path: item.path, size: HOVER_PIC_SIZE });
-          if (hoverPicImg.getAttribute("src") !== url) hoverPicImg.src = url;
-          hoverPicTimer = setTimeout(() => {
-            hoverPicTimer = null;
-            if (hoverPicRow !== pic) return;
-            // 已经缓存过的图不会再触发 load，这里直接亮出来
-            if (hoverPicImg.complete && hoverPicImg.naturalWidth) paintHoverPic();
-          }, 150);
-        });
+        pic.addEventListener("mouseenter", () => armHoverPic(pic, item.path));
         pic.addEventListener("mouseleave", hideHoverPic);
 
         const mid = el("div", "mid");
