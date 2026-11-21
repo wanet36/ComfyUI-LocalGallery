@@ -38,6 +38,7 @@ const CSS = `
 .lgb-tip,
 .lgb-overlay,
 .lgb-hoverpic,
+.lgb-promptbox,
 .lgb-sortmenu {
   --lg-font: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
     "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
@@ -85,6 +86,7 @@ const CSS = `
 .lgb-tip[data-theme="light"],
 .lgb-overlay[data-theme="light"],
 .lgb-hoverpic[data-theme="light"],
+.lgb-promptbox[data-theme="light"],
 .lgb-sortmenu[data-theme="light"] {
   --lg-bg: #f6f7f9;
   --lg-elev: #ffffff;
@@ -1762,6 +1764,68 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   max-height: min(54vh, 460px);
   border-radius: calc(var(--lg-r-lg) - 3px);
   background: var(--lg-sunken);
+}
+
+/* ====================================================== 列表悬停完整提示词 */
+/* 鼠标移到列表行的提示词标签上，旁边浮出整段提示词（行里只显示切好的前几块） */
+.lgb-promptbox {
+  position: fixed;
+  z-index: 99990;
+  display: none;
+  box-sizing: border-box;
+  width: min(460px, 40vw);
+  max-height: min(74vh, 700px);
+  overflow: hidden;
+  padding: 9px 11px 10px;
+  border-radius: var(--lg-r-lg);
+  background: var(--lg-elev);
+  border: 1px solid var(--lg-line-2);
+  box-shadow: var(--lg-shadow-2);
+  color: var(--lg-text-2);
+  font-family: var(--lg-font);
+  font-size: 11.5px;
+  line-height: 1.65;
+  pointer-events: none;
+  opacity: 0;
+  transform: scale(0.975);
+  transition: opacity 110ms ease, transform 110ms ease;
+}
+.lgb-promptbox.on {
+  opacity: 1;
+  transform: none;
+}
+.lgb-promptbox .hd {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 5px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid var(--lg-line);
+  color: var(--lg-text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.lgb-promptbox .hd .nm {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.lgb-promptbox .hd .dim {
+  flex: 0 0 auto;
+  color: var(--lg-text-3);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+.lgb-promptbox .tx {
+  max-height: calc(min(74vh, 700px) - 54px);
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.lgb-promptbox .tx.empty {
+  color: var(--lg-text-3);
+  font-style: italic;
 }
 
 /* ================================================================ 浮层 */
@@ -4858,7 +4922,7 @@ app.registerExtension({
         document.querySelectorAll(".lgb-overlay").forEach((node) => {
           node.dataset.theme = name;
         });
-        document.querySelectorAll(".lgb-hoverpic").forEach((node) => {
+        document.querySelectorAll(".lgb-hoverpic, .lgb-promptbox").forEach((node) => {
           node.dataset.theme = name;
         });
         // 节点底色跟着走，避免浅色模式下留一块深色板
@@ -5981,8 +6045,9 @@ app.registerExtension({
       const tip = el("div", "lgb-tip");
       document.body.appendChild(tip);
 
-      /* 列表模式：鼠标停在缩略图上，旁边浮一张大图。
-         纯只读预览（pointer-events: none），不参与选中、不挡框选 */
+      /* 列表模式的两块只读浮层（都不接收指针事件，不参与选中、不挡框选）：
+         - 悬停缩略图 → 大图
+         - 悬停提示词标签 → 整段提示词 */
       const hoverPic = el("div", "lgb-hoverpic");
       const hoverPicImg = document.createElement("img");
       hoverPicImg.draggable = false;
@@ -5992,6 +6057,41 @@ app.registerExtension({
       const HOVER_PIC_SIZE = 720;
       let hoverPicTimer = null;
       let hoverPicRow = null;
+
+      const promptBox = el("div", "lgb-promptbox");
+      const promptBoxHd = el("div", "hd");
+      const promptBoxName = el("span", "nm");
+      const promptBoxDim = el("span", "dim");
+      const promptBoxTx = el("div", "tx");
+      promptBoxHd.append(promptBoxName, promptBoxDim);
+      promptBox.append(promptBoxHd, promptBoxTx);
+      document.body.appendChild(promptBox);
+      let promptBoxTimer = null;
+      let promptBoxRow = null;
+
+      /* 两块浮层共用定位：优先贴到面板外侧（右 → 左），不盖住列表本身；
+         两侧都放不下才退回面板里、贴右边。垂直方向对齐行的中线并夹在视口内 */
+      function placeAside(boxEl, rowRect) {
+        const pad = 12;
+        const gap = 14;
+        const box = boxEl.getBoundingClientRect();
+        const panel = wrap.getBoundingClientRect();
+        let x;
+        if (panel.right + gap + box.width + pad <= window.innerWidth) {
+          x = panel.right + gap;
+        } else if (panel.left - gap - box.width >= pad) {
+          x = panel.left - gap - box.width;
+        } else {
+          // 面板顶到屏幕边：退到面板里，尽量贴右边，少挡缩略图和文件名；
+          // 还是放不下就整体往左压（宁可压住右侧的行号，也不往缩略图上盖）
+          x = Math.max(rowRect.right + gap, panel.right - box.width - 18);
+          x = Math.max(pad, Math.min(x, window.innerWidth - box.width - pad));
+        }
+        let y = rowRect.top + rowRect.height / 2 - box.height / 2;
+        y = Math.min(Math.max(pad, y), Math.max(pad, window.innerHeight - box.height - pad));
+        boxEl.style.left = `${Math.round(x)}px`;
+        boxEl.style.top = `${Math.round(y)}px`;
+      }
 
       function hideHoverPic() {
         if (hoverPicTimer) {
@@ -6003,35 +6103,47 @@ app.registerExtension({
         hoverPic.style.display = "none";
       }
 
-      /* 优先贴到面板外侧（右 → 左），这样不会盖住列表本身；
-         两侧都放不下才退回面板里、行的右边。垂直方向对齐行的中线并夹在视口内 */
-      function placeHoverPic(rowRect) {
-        const pad = 12;
-        const gap = 14;
-        const box = hoverPic.getBoundingClientRect();
-        const panel = wrap.getBoundingClientRect();
-        let x;
-        if (panel.right + gap + box.width + pad <= window.innerWidth) {
-          x = panel.right + gap;
-        } else if (panel.left - gap - box.width >= pad) {
-          x = panel.left - gap - box.width;
-        } else {
-          // 面板顶到屏幕边：退到面板里，但尽量贴右边，少挡缩略图和文件名
-          x = Math.max(rowRect.right + gap, panel.right - box.width - 18);
-          if (x + box.width + pad > window.innerWidth) x = rowRect.left - box.width - gap;
-          x = Math.min(Math.max(pad, x), Math.max(pad, window.innerWidth - box.width - pad));
+      function hidePromptBox() {
+        if (promptBoxTimer) {
+          clearTimeout(promptBoxTimer);
+          promptBoxTimer = null;
         }
-        let y = rowRect.top + rowRect.height / 2 - box.height / 2;
-        y = Math.min(Math.max(pad, y), Math.max(pad, window.innerHeight - box.height - pad));
-        hoverPic.style.left = `${Math.round(x)}px`;
-        hoverPic.style.top = `${Math.round(y)}px`;
+        promptBoxRow = null;
+        promptBox.classList.remove("on");
+        promptBox.style.display = "none";
+      }
+
+      function hideHoverPanels() {
+        hideHoverPic();
+        hidePromptBox();
       }
 
       function paintHoverPic() {
         if (!hoverPicRow || !hoverPicRow.isConnected) return;
         hoverPic.style.display = "block";
-        placeHoverPic(hoverPicRow.getBoundingClientRect());
+        placeAside(hoverPic, hoverPicRow.getBoundingClientRect());
         hoverPic.classList.add("on");
+      }
+
+      /* 整段提示词：行里只有前 14 个标签，这里给全文（换行保留） */
+      function showPromptBox(item, entry) {
+        if (!promptBoxRow || !promptBoxRow.isConnected) return;
+        promptBoxName.textContent = item.name || item.stem || "";
+        promptBoxDim.textContent = item.width && item.height ? `${item.width}×${item.height}` : "";
+        const text = entry?.prompt || "";
+        if (!text && entry?.error) {
+          promptBoxTx.textContent = `读取失败：${entry.error}`;
+        } else {
+          promptBoxTx.textContent = text
+            ? text
+            : entry
+              ? "（此图未找到同名提示词）"
+              : "读取提示词…";
+        }
+        promptBoxTx.classList.toggle("empty", !text);
+        promptBox.style.display = "block";
+        placeAside(promptBox, promptBoxRow.closest(".lgb-lrow")?.getBoundingClientRect() || promptBoxRow.getBoundingClientRect());
+        promptBox.classList.add("on");
       }
 
       // 加载完再亮：第一帧图还没有尺寸，先定位会贴到错的地方
@@ -6042,8 +6154,8 @@ app.registerExtension({
       });
 
       // 一按下（选中 / 框选 / 点按钮）就收起；视口尺寸变了也收起，免得停在半空
-      wrap.addEventListener("pointerdown", hideHoverPic, true);
-      window.addEventListener("resize", hideHoverPic);
+      wrap.addEventListener("pointerdown", hideHoverPanels, true);
+      window.addEventListener("resize", hideHoverPanels);
 
       // 浮窗建好后再套主题（applyTheme 会同步浮窗自身的令牌）
       applyTheme();
@@ -6137,7 +6249,7 @@ app.registerExtension({
         "scroll",
         () => {
           hideTip();
-          hideHoverPic();
+          hideHoverPanels();
           maybeLoadMore();
         },
         { passive: true }
@@ -6185,7 +6297,7 @@ app.registerExtension({
       function openViewer(item) {
         if (!item) return;
         hideTip(); // 悬停提示的层级比遮罩高，不收起会浮在大图上面
-        hideHoverPic();
+        hideHoverPanels();
         // 在当前列表里翻页（收藏页就是收藏列表），不用关掉重开
         let list = visibleItems();
         let index = list.findIndex((entry) => entry.path === item.path);
@@ -6664,7 +6776,7 @@ app.registerExtension({
       }
 
       function switchTab(name) {
-        hideHoverPic();
+        hideHoverPanels();
         activeTab = ["favorites", "prompts", "reverse", "convert", "compare"].includes(name)
           ? name
           : "gallery";
@@ -11265,6 +11377,28 @@ app.registerExtension({
         const tags = el("div", "tags");
         mid.append(nm, el("div", "meta", metaBits.join(" · ")), tags);
 
+        // 悬停提示词标签 → 旁边浮出整段提示词（行里只切了前 14 块）
+        tags.addEventListener("mouseenter", () => {
+          if (dragSel) return;
+          hidePromptBox();
+          promptBoxRow = tags;
+          const cached = state.promptCache.get(item.path);
+          promptBoxTimer = setTimeout(() => {
+            promptBoxTimer = null;
+            if (promptBoxRow !== tags) return;
+            if (cached && !cached.error) {
+              showPromptBox(item, cached);
+              return;
+            }
+            showPromptBox(item, null); // 先亮「读取提示词…」，读到再补
+            ensurePrompt(item).then((entry) => {
+              if (promptBoxRow !== tags) return;
+              showPromptBox(item, entry || { prompt: "" });
+            });
+          }, 150);
+        });
+        tags.addEventListener("mouseleave", hidePromptBox);
+
         const no = el("div", "no", String(index + 1));
 
         const acts = el("div", "acts");
@@ -11326,7 +11460,7 @@ app.registerExtension({
 
       function renderList(items, reset) {
         if (reset) {
-          hideHoverPic();
+          hideHoverPanels();
           listBox.replaceChildren();
           state.rendered = 0;
         }
@@ -11342,7 +11476,7 @@ app.registerExtension({
       function setViewMode(mode, { persist = true, rerender = true } = {}) {
         state.view = mode === "list" ? "list" : "grid";
         const isList = state.view === "list";
-        hideHoverPic();
+        hideHoverPanels();
         grid.style.display = isList ? "none" : "";
         listBox.style.display = isList ? "" : "none";
         syncViewSwitch();
