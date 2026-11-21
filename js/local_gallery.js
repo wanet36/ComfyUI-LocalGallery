@@ -6070,17 +6070,20 @@ app.registerExtension({
       let promptBoxRow = null;
 
       /* 两块浮层共用定位：优先贴到面板外侧（右 → 左），不盖住列表本身；
-         两侧都放不下才退回面板里、贴右边。垂直方向对齐行的中线并夹在视口内 */
-      function placeAside(boxEl, rowRect) {
+         两侧都放不下才退回面板里、贴右边。垂直方向对齐行的中线并夹在视口内。
+         preferLeft：大图预览优先放左边（提示词浮框仍优先右边） */
+      function placeAside(boxEl, rowRect, preferLeft = false) {
         const pad = 12;
         const gap = 14;
         const box = boxEl.getBoundingClientRect();
         const panel = wrap.getBoundingClientRect();
+        const fitsLeft = panel.left - gap - box.width >= pad;
+        const fitsRight = panel.right + gap + box.width + pad <= window.innerWidth;
         let x;
-        if (panel.right + gap + box.width + pad <= window.innerWidth) {
-          x = panel.right + gap;
-        } else if (panel.left - gap - box.width >= pad) {
-          x = panel.left - gap - box.width;
+        if (preferLeft ? fitsLeft : fitsRight) {
+          x = preferLeft ? panel.left - gap - box.width : panel.right + gap;
+        } else if (preferLeft ? fitsRight : fitsLeft) {
+          x = preferLeft ? panel.right + gap : panel.left - gap - box.width;
         } else {
           // 面板顶到屏幕边：退到面板里，尽量贴右边，少挡缩略图和文件名；
           // 还是放不下就整体往左压（宁可压住右侧的行号，也不往缩略图上盖）
@@ -6121,7 +6124,7 @@ app.registerExtension({
       function paintHoverPic() {
         if (!hoverPicRow || !hoverPicRow.isConnected) return;
         hoverPic.style.display = "block";
-        placeAside(hoverPic, hoverPicRow.getBoundingClientRect());
+        placeAside(hoverPic, hoverPicRow.getBoundingClientRect(), true);
         hoverPic.classList.add("on");
       }
 
