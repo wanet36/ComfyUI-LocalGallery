@@ -1611,8 +1611,6 @@ html.lgb-no-hints .lgb-settings .desc:not(.warnline):not(.lgb-conv-msg) {
   color: var(--lg-text);
   font-size: 11.5px;
   line-height: 1.55;
-  max-height: 170px;
-  overflow-y: auto;
 }
 .lgb-prompt-body.empty {
   color: var(--lg-text-3);
